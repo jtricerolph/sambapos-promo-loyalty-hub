@@ -205,6 +205,15 @@ class Loyalty_Hub_Admin {
             case 'edit_promo':
                 $this->handle_edit_promo();
                 break;
+            case 'add_identifier':
+                $this->handle_add_identifier();
+                break;
+            case 'delete_identifier':
+                $this->handle_delete_identifier();
+                break;
+            case 'delete_customer':
+                $this->handle_delete_customer();
+                break;
         }
     }
 
@@ -295,14 +304,18 @@ class Loyalty_Hub_Admin {
         // Search
         $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
 
-        // Build query
+        // Build query - search includes identifiers table
         $where = "WHERE c.is_active = 1";
         if ($search) {
+            $search_like = '%' . $wpdb->esc_like($search) . '%';
             $where .= $wpdb->prepare(
-                " AND (c.name LIKE %s OR c.email LIKE %s OR c.rfid_code LIKE %s)",
-                '%' . $wpdb->esc_like($search) . '%',
-                '%' . $wpdb->esc_like($search) . '%',
-                '%' . $wpdb->esc_like($search) . '%'
+                " AND (c.name LIKE %s OR c.email LIKE %s OR c.id IN (
+                    SELECT customer_id FROM {$wpdb->prefix}loyalty_customer_identifiers
+                    WHERE identifier_value LIKE %s
+                ))",
+                $search_like,
+                $search_like,
+                $search_like
             );
         }
 
@@ -319,6 +332,16 @@ class Loyalty_Hub_Admin {
              LIMIT $per_page OFFSET $offset"
         );
 
+        // Get identifiers for each customer (for display in list)
+        foreach ($customers as &$customer) {
+            $customer->identifiers = $wpdb->get_results($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}loyalty_customer_identifiers
+                 WHERE customer_id = %d AND is_active = 1
+                 ORDER BY identifier_type, created_at",
+                $customer->id
+            ));
+        }
+
         $total_pages = ceil($total / $per_page);
 
         // Hotels for dropdown
@@ -328,11 +351,20 @@ class Loyalty_Hub_Admin {
 
         // Check if editing
         $editing = null;
+        $editing_identifiers = array();
         if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
             $editing = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM {$wpdb->prefix}loyalty_customers WHERE id = %d",
                 intval($_GET['edit'])
             ));
+            if ($editing) {
+                $editing_identifiers = $wpdb->get_results($wpdb->prepare(
+                    "SELECT * FROM {$wpdb->prefix}loyalty_customer_identifiers
+                     WHERE customer_id = %d
+                     ORDER BY identifier_type, created_at",
+                    $editing->id
+                ));
+            }
         }
 
         include LOYALTY_HUB_PLUGIN_DIR . 'admin/views/customers.php';
@@ -616,20 +648,82 @@ class Loyalty_Hub_Admin {
     private function handle_add_customer() {
         global $wpdb;
 
+        $email = sanitize_email($_POST['customer_email']);
+        $rfid_code = sanitize_text_field($_POST['rfid_code'] ?? '');
+
+        // Check for duplicate email
+        if (!empty($email)) {
+            $existing_email = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE email = %s",
+                $email
+            ));
+            if ($existing_email) {
+                wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&error=duplicate_email'));
+                exit;
+            }
+        }
+
+        // Check for duplicate RFID in identifiers table
+        if (!empty($rfid_code)) {
+            $existing_rfid = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}loyalty_customer_identifiers WHERE identifier_value = %s",
+                $rfid_code
+            ));
+            if ($existing_rfid) {
+                wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&error=duplicate_rfid'));
+                exit;
+            }
+        }
+
+        // Insert customer (without rfid_code/qr_code - those go in identifiers table)
         $wpdb->insert(
             $wpdb->prefix . 'loyalty_customers',
             array(
                 'home_hotel_id' => intval($_POST['home_hotel_id']),
                 'name'          => sanitize_text_field($_POST['customer_name']),
-                'email'         => sanitize_email($_POST['customer_email']),
+                'email'         => $email ?: null,
                 'phone'         => sanitize_text_field($_POST['customer_phone'] ?? ''),
-                'dob'           => sanitize_text_field($_POST['customer_dob'] ?? null),
-                'rfid_code'     => sanitize_text_field($_POST['rfid_code'] ?? ''),
-                'qr_code'       => 'LH' . strtoupper(wp_generate_password(12, false, false)),
+                'dob'           => sanitize_text_field($_POST['customer_dob'] ?? null) ?: null,
                 'is_staff'      => isset($_POST['is_staff']) ? 1 : 0,
             ),
-            array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d')
+            array('%d', '%s', '%s', '%s', '%s', '%d')
         );
+
+        $customer_id = $wpdb->insert_id;
+
+        if (!$customer_id) {
+            wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&error=insert_failed'));
+            exit;
+        }
+
+        // Generate and insert QR code
+        $qr_code = 'LH' . strtoupper(wp_generate_password(12, false, false));
+        $wpdb->insert(
+            $wpdb->prefix . 'loyalty_customer_identifiers',
+            array(
+                'customer_id'      => $customer_id,
+                'identifier_type'  => 'qr',
+                'identifier_value' => $qr_code,
+                'label'            => 'Primary QR Code',
+                'is_active'        => 1,
+            ),
+            array('%d', '%s', '%s', '%s', '%d')
+        );
+
+        // Insert RFID if provided
+        if (!empty($rfid_code)) {
+            $wpdb->insert(
+                $wpdb->prefix . 'loyalty_customer_identifiers',
+                array(
+                    'customer_id'      => $customer_id,
+                    'identifier_type'  => 'rfid',
+                    'identifier_value' => $rfid_code,
+                    'label'            => 'Primary RFID Fob',
+                    'is_active'        => 1,
+                ),
+                array('%d', '%s', '%s', '%s', '%d')
+            );
+        }
 
         wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&added=1'));
         exit;
@@ -642,25 +736,147 @@ class Loyalty_Hub_Admin {
         global $wpdb;
 
         $id = intval($_POST['customer_id']);
+        $email = sanitize_email($_POST['customer_email']);
 
+        // Check for duplicate email (excluding current customer)
+        if (!empty($email)) {
+            $existing_email = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE email = %s AND id != %d",
+                $email,
+                $id
+            ));
+            if ($existing_email) {
+                wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&edit=' . $id . '&error=duplicate_email'));
+                exit;
+            }
+        }
+
+        // Update customer (identifiers are managed separately)
         $wpdb->update(
             $wpdb->prefix . 'loyalty_customers',
             array(
                 'home_hotel_id' => intval($_POST['home_hotel_id']),
                 'name'          => sanitize_text_field($_POST['customer_name']),
-                'email'         => sanitize_email($_POST['customer_email']),
+                'email'         => $email ?: null,
                 'phone'         => sanitize_text_field($_POST['customer_phone'] ?? ''),
-                'dob'           => sanitize_text_field($_POST['customer_dob'] ?? null),
-                'rfid_code'     => sanitize_text_field($_POST['rfid_code'] ?? ''),
+                'dob'           => sanitize_text_field($_POST['customer_dob'] ?? null) ?: null,
                 'is_staff'      => isset($_POST['is_staff']) ? 1 : 0,
                 'is_active'     => isset($_POST['is_active']) ? 1 : 0,
             ),
             array('id' => $id),
-            array('%d', '%s', '%s', '%s', '%s', '%s', '%d', '%d'),
+            array('%d', '%s', '%s', '%s', '%s', '%d', '%d'),
             array('%d')
         );
 
         wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&updated=1'));
+        exit;
+    }
+
+    /**
+     * Handle deleting a customer (soft delete)
+     */
+    private function handle_delete_customer() {
+        global $wpdb;
+
+        $id = intval($_POST['customer_id']);
+
+        // Soft delete - set is_active = 0
+        $wpdb->update(
+            $wpdb->prefix . 'loyalty_customers',
+            array('is_active' => 0),
+            array('id' => $id),
+            array('%d'),
+            array('%d')
+        );
+
+        // Also deactivate all identifiers
+        $wpdb->update(
+            $wpdb->prefix . 'loyalty_customer_identifiers',
+            array('is_active' => 0),
+            array('customer_id' => $id),
+            array('%d'),
+            array('%d')
+        );
+
+        wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&deleted=1'));
+        exit;
+    }
+
+    /**
+     * Handle adding an identifier to a customer
+     */
+    private function handle_add_identifier() {
+        global $wpdb;
+
+        $customer_id = intval($_POST['customer_id']);
+        $identifier = sanitize_text_field($_POST['identifier_value']);
+        $type = sanitize_text_field($_POST['identifier_type'] ?? 'rfid');
+        $label = sanitize_text_field($_POST['identifier_label'] ?? '');
+
+        // Check for duplicate
+        $existing = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}loyalty_customer_identifiers WHERE identifier_value = %s",
+            $identifier
+        ));
+
+        if ($existing) {
+            wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&edit=' . $customer_id . '&error=duplicate'));
+            exit;
+        }
+
+        $wpdb->insert(
+            $wpdb->prefix . 'loyalty_customer_identifiers',
+            array(
+                'customer_id'      => $customer_id,
+                'identifier_type'  => $type,
+                'identifier_value' => $identifier,
+                'label'            => $label ?: null,
+                'is_active'        => 1,
+            ),
+            array('%d', '%s', '%s', '%s', '%d')
+        );
+
+        // Update customer's updated_at for sync
+        $wpdb->update(
+            $wpdb->prefix . 'loyalty_customers',
+            array('updated_at' => current_time('mysql')),
+            array('id' => $customer_id),
+            array('%s'),
+            array('%d')
+        );
+
+        wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&edit=' . $customer_id . '&identifier_added=1'));
+        exit;
+    }
+
+    /**
+     * Handle deleting an identifier
+     */
+    private function handle_delete_identifier() {
+        global $wpdb;
+
+        $identifier_id = intval($_POST['identifier_id']);
+        $customer_id = intval($_POST['customer_id']);
+
+        // Soft delete (set is_active = 0)
+        $wpdb->update(
+            $wpdb->prefix . 'loyalty_customer_identifiers',
+            array('is_active' => 0),
+            array('id' => $identifier_id),
+            array('%d'),
+            array('%d')
+        );
+
+        // Update customer's updated_at for sync
+        $wpdb->update(
+            $wpdb->prefix . 'loyalty_customers',
+            array('updated_at' => current_time('mysql')),
+            array('id' => $customer_id),
+            array('%s'),
+            array('%d')
+        );
+
+        wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&edit=' . $customer_id . '&identifier_removed=1'));
         exit;
     }
 

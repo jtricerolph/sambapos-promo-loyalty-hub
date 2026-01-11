@@ -2,16 +2,17 @@
 /**
  * Admin Customers View
  *
- * Manage customer accounts.
+ * Manage customer accounts and their identifiers (RFID fobs, QR codes).
  *
  * Available variables:
- * @var array  $customers     Paginated customer list
- * @var array  $hotels        Hotels for dropdown
- * @var int    $total         Total customer count
- * @var int    $total_pages   Total pages
- * @var int    $page          Current page
- * @var string $search        Search term
- * @var object $editing       Customer being edited (if any)
+ * @var array  $customers            Paginated customer list (with identifiers)
+ * @var array  $hotels               Hotels for dropdown
+ * @var int    $total                Total customer count
+ * @var int    $total_pages          Total pages
+ * @var int    $page                 Current page
+ * @var string $search               Search term
+ * @var object $editing              Customer being edited (if any)
+ * @var array  $editing_identifiers  Identifiers for customer being edited
  *
  * @package Loyalty_Hub
  * @since 1.0.0
@@ -42,6 +43,49 @@ if (!defined('ABSPATH')) {
         </div>
     <?php endif; ?>
 
+    <?php if (isset($_GET['identifier_added'])) : ?>
+        <div class="notice notice-success is-dismissible">
+            <p>Identifier added successfully.</p>
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['identifier_removed'])) : ?>
+        <div class="notice notice-success is-dismissible">
+            <p>Identifier removed successfully.</p>
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['deleted'])) : ?>
+        <div class="notice notice-success is-dismissible">
+            <p>Customer deleted successfully.</p>
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['error'])) : ?>
+        <div class="notice notice-error is-dismissible">
+            <p>
+                <?php
+                switch ($_GET['error']) {
+                    case 'duplicate':
+                        echo 'This identifier is already registered to another customer.';
+                        break;
+                    case 'duplicate_email':
+                        echo 'This email address is already registered to another customer.';
+                        break;
+                    case 'duplicate_rfid':
+                        echo 'This RFID code is already registered to another customer.';
+                        break;
+                    case 'insert_failed':
+                        echo 'Failed to create customer. Please try again.';
+                        break;
+                    default:
+                        echo 'An error occurred. Please try again.';
+                }
+                ?>
+            </p>
+        </div>
+    <?php endif; ?>
+
     <!-- Search Form -->
     <form method="get" class="search-form">
         <input type="hidden" name="page" value="loyalty-hub-customers">
@@ -66,7 +110,7 @@ if (!defined('ABSPATH')) {
                 <th>Name</th>
                 <th>Email</th>
                 <th>Home Hotel</th>
-                <th>RFID Code</th>
+                <th>Identifiers</th>
                 <th>Staff</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -90,10 +134,23 @@ if (!defined('ABSPATH')) {
                         <td><?php echo esc_html($customer->email ?: '-'); ?></td>
                         <td><?php echo esc_html($customer->home_hotel_name ?: '-'); ?></td>
                         <td>
-                            <?php if ($customer->rfid_code) : ?>
-                                <code><?php echo esc_html($customer->rfid_code); ?></code>
+                            <?php if (!empty($customer->identifiers)) : ?>
+                                <?php
+                                $rfid_count = 0;
+                                $qr_count = 0;
+                                foreach ($customer->identifiers as $ident) {
+                                    if ($ident->identifier_type === 'rfid') $rfid_count++;
+                                    if ($ident->identifier_type === 'qr') $qr_count++;
+                                }
+                                ?>
+                                <?php if ($rfid_count > 0) : ?>
+                                    <span class="identifier-badge rfid"><?php echo $rfid_count; ?> RFID</span>
+                                <?php endif; ?>
+                                <?php if ($qr_count > 0) : ?>
+                                    <span class="identifier-badge qr"><?php echo $qr_count; ?> QR</span>
+                                <?php endif; ?>
                             <?php else : ?>
-                                -
+                                <span style="color: #999;">None</span>
                             <?php endif; ?>
                         </td>
                         <td>
@@ -222,23 +279,16 @@ if (!defined('ABSPATH')) {
                         <p class="description">Where the customer registered. Affects tier calculation.</p>
                     </td>
                 </tr>
-                <tr>
-                    <th scope="row">
-                        <label for="rfid_code">RFID Code</label>
-                    </th>
-                    <td>
-                        <input type="text" id="rfid_code" name="rfid_code" class="regular-text"
-                               value="<?php echo esc_attr($editing->rfid_code ?? ''); ?>">
-                        <p class="description">Physical fob identifier.</p>
-                    </td>
-                </tr>
 
-                <?php if ($editing) : ?>
+                <?php if (!$editing) : ?>
+                    <!-- RFID only shown when adding new customer -->
                     <tr>
-                        <th scope="row">QR Code</th>
+                        <th scope="row">
+                            <label for="rfid_code">Initial RFID Code</label>
+                        </th>
                         <td>
-                            <code><?php echo esc_html($editing->qr_code); ?></code>
-                            <p class="description">Auto-generated app identifier.</p>
+                            <input type="text" id="rfid_code" name="rfid_code" class="regular-text">
+                            <p class="description">Physical fob identifier. You can add more after creating the customer.</p>
                         </td>
                     </tr>
                 <?php endif; ?>
@@ -281,5 +331,159 @@ if (!defined('ABSPATH')) {
                 <?php endif; ?>
             </p>
         </form>
+
+        <?php if ($editing) : ?>
+            <!-- Delete Customer Form -->
+            <form method="post" action="" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #ccc;"
+                  onsubmit="return confirm('Are you sure you want to delete this customer? This action cannot be undone.');">
+                <?php wp_nonce_field('loyalty_hub_admin', 'loyalty_hub_nonce'); ?>
+                <input type="hidden" name="loyalty_hub_action" value="delete_customer">
+                <input type="hidden" name="customer_id" value="<?php echo esc_attr($editing->id); ?>">
+                <button type="submit" class="button button-link-delete" style="color: #b32d2e;">
+                    Delete Customer
+                </button>
+            </form>
+        <?php endif; ?>
     </div>
+
+    <?php if ($editing) : ?>
+        <!-- Identifiers Management Section -->
+        <div class="loyalty-hub-form-section">
+            <h2>Identifiers (RFID Fobs & QR Codes)</h2>
+            <p class="description">
+                Manage RFID fobs and QR codes for this customer. Multiple RFID fobs can be added for couples/families sharing an account.
+            </p>
+
+            <!-- Current Identifiers -->
+            <table class="wp-list-table widefat fixed striped" style="margin-top: 15px;">
+                <thead>
+                    <tr>
+                        <th>Type</th>
+                        <th>Value</th>
+                        <th>Label</th>
+                        <th>Status</th>
+                        <th>Added</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php if (empty($editing_identifiers)) : ?>
+                        <tr>
+                            <td colspan="6">No identifiers found. Add one below.</td>
+                        </tr>
+                    <?php else : ?>
+                        <?php foreach ($editing_identifiers as $ident) : ?>
+                            <tr class="<?php echo $ident->is_active ? '' : 'inactive-row'; ?>">
+                                <td>
+                                    <span class="identifier-badge <?php echo esc_attr($ident->identifier_type); ?>">
+                                        <?php echo strtoupper(esc_html($ident->identifier_type)); ?>
+                                    </span>
+                                </td>
+                                <td><code><?php echo esc_html($ident->identifier_value); ?></code></td>
+                                <td><?php echo esc_html($ident->label ?: '-'); ?></td>
+                                <td>
+                                    <?php if ($ident->is_active) : ?>
+                                        <span class="status-badge status-active">Active</span>
+                                    <?php else : ?>
+                                        <span class="status-badge status-inactive">Removed</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo esc_html(date('Y-m-d', strtotime($ident->created_at))); ?></td>
+                                <td>
+                                    <?php if ($ident->is_active) : ?>
+                                        <form method="post" action="" style="display: inline;"
+                                              onsubmit="return confirm('Remove this identifier?');">
+                                            <?php wp_nonce_field('loyalty_hub_admin', 'loyalty_hub_nonce'); ?>
+                                            <input type="hidden" name="loyalty_hub_action" value="delete_identifier">
+                                            <input type="hidden" name="identifier_id" value="<?php echo esc_attr($ident->id); ?>">
+                                            <input type="hidden" name="customer_id" value="<?php echo esc_attr($editing->id); ?>">
+                                            <button type="submit" class="button button-link-delete">Remove</button>
+                                        </form>
+                                    <?php else : ?>
+                                        <span style="color: #999;">-</span>
+                                    <?php endif; ?>
+                                </td>
+                            </tr>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+                </tbody>
+            </table>
+
+            <!-- Add New Identifier Form -->
+            <h3 style="margin-top: 20px;">Add New Identifier</h3>
+            <form method="post" action="">
+                <?php wp_nonce_field('loyalty_hub_admin', 'loyalty_hub_nonce'); ?>
+                <input type="hidden" name="loyalty_hub_action" value="add_identifier">
+                <input type="hidden" name="customer_id" value="<?php echo esc_attr($editing->id); ?>">
+
+                <table class="form-table">
+                    <tr>
+                        <th scope="row">
+                            <label for="identifier_type">Type</label>
+                        </th>
+                        <td>
+                            <select id="identifier_type" name="identifier_type" required>
+                                <option value="rfid">RFID Fob</option>
+                                <option value="qr">QR Code</option>
+                            </select>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="identifier_value">Code *</label>
+                        </th>
+                        <td>
+                            <input type="text" id="identifier_value" name="identifier_value" class="regular-text" required>
+                            <p class="description">The RFID fob code or QR code value.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row">
+                            <label for="identifier_label">Label</label>
+                        </th>
+                        <td>
+                            <input type="text" id="identifier_label" name="identifier_label" class="regular-text"
+                                   placeholder="e.g., Wife's fob, Spare key">
+                            <p class="description">Optional friendly name to identify this fob.</p>
+                        </td>
+                    </tr>
+                </table>
+
+                <p class="submit">
+                    <input type="submit" class="button button-secondary" value="Add Identifier">
+                </p>
+            </form>
+        </div>
+    <?php endif; ?>
 </div>
+
+<style>
+.identifier-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+.identifier-badge.rfid {
+    background: #e7f3ff;
+    color: #0073aa;
+}
+.identifier-badge.qr {
+    background: #f0f0f1;
+    color: #50575e;
+}
+.inactive-row {
+    opacity: 0.5;
+}
+.button-link-delete {
+    color: #b32d2e !important;
+    border: none !important;
+    background: none !important;
+    cursor: pointer;
+}
+.button-link-delete:hover {
+    color: #dc3232 !important;
+}
+</style>
