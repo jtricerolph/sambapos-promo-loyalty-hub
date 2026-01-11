@@ -195,6 +195,9 @@ class Loyalty_Hub {
      * @since 1.0.0
      */
     public static function activate() {
+        // Load database class (not loaded yet during activation)
+        require_once LOYALTY_HUB_PLUGIN_DIR . 'includes/class-database.php';
+
         // Create database tables
         Loyalty_Hub_Database::create_tables();
 
