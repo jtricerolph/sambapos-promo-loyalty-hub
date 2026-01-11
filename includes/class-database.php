@@ -195,12 +195,12 @@ class Loyalty_Hub_Database {
          *
          * Key fields:
          * - home_hotel_id: Where customer registered (affects tier calc)
-         * - rfid_code: Physical fob identifier
-         * - qr_code: App-generated QR code
+         * - qr_code: App-generated QR code (single per customer, auto-generated)
          * - is_staff: Manual flag for staff discounts
          *
-         * Identification can be via RFID fob OR QR code.
-         * Both must be unique across the system.
+         * Note: RFID fobs are stored in loyalty_customer_identifiers table
+         * to allow multiple fobs per customer (for couples/families).
+         * QR codes are stored here as each customer has exactly one.
          *
          * HOME HOTEL is important for tier calculation:
          * - Customer's tier is the BEST of their home hotel threshold
@@ -215,11 +215,13 @@ class Loyalty_Hub_Database {
             email varchar(255),
             phone varchar(20),
             dob date,
+            qr_code varchar(100),
             is_staff tinyint(1) DEFAULT 0,
             is_active tinyint(1) DEFAULT 1,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
+            UNIQUE KEY qr_code (qr_code),
             KEY home_hotel_id (home_hotel_id),
             KEY email (email)
         ) $charset_collate;";
@@ -229,16 +231,18 @@ class Loyalty_Hub_Database {
          * =================================================================
          * CUSTOMER IDENTIFIERS TABLE
          * =================================================================
-         * Stores multiple identifiers (RFID fobs, QR codes) per customer.
+         * Stores RFID fobs for customers. Multiple fobs per customer allowed.
          *
          * This allows:
          * - Multiple RFID fobs per customer (for couples/families)
-         * - Both RFID and QR codes for same customer
-         * - Easy lookup by any identifier type
+         * - Each fob can have a label like "Wife's fob", "Spare key"
          *
-         * identifier_type values: 'rfid', 'qr'
-         * identifier_value: The actual code scanned
-         * label: Optional friendly name (e.g., "John's fob", "Wife's fob")
+         * Note: QR codes are stored directly on the customers table
+         * as each customer has exactly one auto-generated QR code.
+         *
+         * identifier_type: Currently only 'rfid' (kept for potential future types)
+         * identifier_value: The RFID fob code
+         * label: Optional friendly name
          */
         $table_identifiers = $wpdb->prefix . 'loyalty_customer_identifiers';
         $sql_identifiers = "CREATE TABLE $table_identifiers (

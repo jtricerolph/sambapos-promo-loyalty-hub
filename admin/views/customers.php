@@ -2,17 +2,19 @@
 /**
  * Admin Customers View
  *
- * Manage customer accounts and their identifiers (RFID fobs, QR codes).
+ * Manage customer accounts and their RFID fobs.
+ * QR codes are auto-generated and stored on the customer table.
+ * RFID fobs are stored in the identifiers table (multiple per customer allowed).
  *
  * Available variables:
- * @var array  $customers            Paginated customer list (with identifiers)
+ * @var array  $customers            Paginated customer list (with rfid_fobs)
  * @var array  $hotels               Hotels for dropdown
  * @var int    $total                Total customer count
  * @var int    $total_pages          Total pages
  * @var int    $page                 Current page
  * @var string $search               Search term
  * @var object $editing              Customer being edited (if any)
- * @var array  $editing_identifiers  Identifiers for customer being edited
+ * @var array  $editing_rfid_fobs    RFID fobs for customer being edited
  *
  * @package Loyalty_Hub
  * @since 1.0.0
@@ -43,15 +45,15 @@ if (!defined('ABSPATH')) {
         </div>
     <?php endif; ?>
 
-    <?php if (isset($_GET['identifier_added'])) : ?>
+    <?php if (isset($_GET['rfid_added'])) : ?>
         <div class="notice notice-success is-dismissible">
-            <p>Identifier added successfully.</p>
+            <p>RFID fob added successfully.</p>
         </div>
     <?php endif; ?>
 
-    <?php if (isset($_GET['identifier_removed'])) : ?>
+    <?php if (isset($_GET['rfid_removed'])) : ?>
         <div class="notice notice-success is-dismissible">
-            <p>Identifier removed successfully.</p>
+            <p>RFID fob removed successfully.</p>
         </div>
     <?php endif; ?>
 
@@ -67,7 +69,7 @@ if (!defined('ABSPATH')) {
                 <?php
                 switch ($_GET['error']) {
                     case 'duplicate':
-                        echo 'This identifier is already registered to another customer.';
+                        echo 'This RFID code is already registered to another customer.';
                         break;
                     case 'duplicate_email':
                         echo 'This email address is already registered to another customer.';
@@ -134,22 +136,17 @@ if (!defined('ABSPATH')) {
                         <td><?php echo esc_html($customer->email ?: '-'); ?></td>
                         <td><?php echo esc_html($customer->home_hotel_name ?: '-'); ?></td>
                         <td>
-                            <?php if (!empty($customer->identifiers)) : ?>
-                                <?php
-                                $rfid_count = 0;
-                                $qr_count = 0;
-                                foreach ($customer->identifiers as $ident) {
-                                    if ($ident->identifier_type === 'rfid') $rfid_count++;
-                                    if ($ident->identifier_type === 'qr') $qr_count++;
-                                }
-                                ?>
-                                <?php if ($rfid_count > 0) : ?>
-                                    <span class="identifier-badge rfid"><?php echo $rfid_count; ?> RFID</span>
-                                <?php endif; ?>
-                                <?php if ($qr_count > 0) : ?>
-                                    <span class="identifier-badge qr"><?php echo $qr_count; ?> QR</span>
-                                <?php endif; ?>
-                            <?php else : ?>
+                            <?php
+                            $rfid_count = count($customer->rfid_fobs ?? []);
+                            $has_qr = !empty($customer->qr_code);
+                            ?>
+                            <?php if ($rfid_count > 0) : ?>
+                                <span class="identifier-badge rfid"><?php echo $rfid_count; ?> RFID</span>
+                            <?php endif; ?>
+                            <?php if ($has_qr) : ?>
+                                <span class="identifier-badge qr">QR</span>
+                            <?php endif; ?>
+                            <?php if ($rfid_count === 0 && !$has_qr) : ?>
                                 <span style="color: #999;">None</span>
                             <?php endif; ?>
                         </td>
@@ -280,6 +277,17 @@ if (!defined('ABSPATH')) {
                     </td>
                 </tr>
 
+                <?php if ($editing && !empty($editing->qr_code)) : ?>
+                    <!-- Show QR code (read-only) when editing -->
+                    <tr>
+                        <th scope="row">QR Code</th>
+                        <td>
+                            <code style="font-size: 14px; padding: 5px 10px; background: #f0f0f1;"><?php echo esc_html($editing->qr_code); ?></code>
+                            <p class="description">Auto-generated. Used for app identification.</p>
+                        </td>
+                    </tr>
+                <?php endif; ?>
+
                 <?php if (!$editing) : ?>
                     <!-- RFID only shown when adding new customer -->
                     <tr>
@@ -347,19 +355,18 @@ if (!defined('ABSPATH')) {
     </div>
 
     <?php if ($editing) : ?>
-        <!-- Identifiers Management Section -->
+        <!-- RFID Fobs Management Section -->
         <div class="loyalty-hub-form-section">
-            <h2>Identifiers (RFID Fobs & QR Codes)</h2>
+            <h2>RFID Fobs</h2>
             <p class="description">
-                Manage RFID fobs and QR codes for this customer. Multiple RFID fobs can be added for couples/families sharing an account.
+                Manage RFID fobs for this customer. Multiple fobs can be added for couples or families sharing an account.
             </p>
 
-            <!-- Current Identifiers -->
+            <!-- Current RFID Fobs -->
             <table class="wp-list-table widefat fixed striped" style="margin-top: 15px;">
                 <thead>
                     <tr>
-                        <th>Type</th>
-                        <th>Value</th>
+                        <th>RFID Code</th>
                         <th>Label</th>
                         <th>Status</th>
                         <th>Added</th>
@@ -367,35 +374,30 @@ if (!defined('ABSPATH')) {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php if (empty($editing_identifiers)) : ?>
+                    <?php if (empty($editing_rfid_fobs)) : ?>
                         <tr>
-                            <td colspan="6">No identifiers found. Add one below.</td>
+                            <td colspan="5">No RFID fobs. Add one below.</td>
                         </tr>
                     <?php else : ?>
-                        <?php foreach ($editing_identifiers as $ident) : ?>
-                            <tr class="<?php echo $ident->is_active ? '' : 'inactive-row'; ?>">
+                        <?php foreach ($editing_rfid_fobs as $fob) : ?>
+                            <tr class="<?php echo $fob->is_active ? '' : 'inactive-row'; ?>">
+                                <td><code><?php echo esc_html($fob->identifier_value); ?></code></td>
+                                <td><?php echo esc_html($fob->label ?: '-'); ?></td>
                                 <td>
-                                    <span class="identifier-badge <?php echo esc_attr($ident->identifier_type); ?>">
-                                        <?php echo strtoupper(esc_html($ident->identifier_type)); ?>
-                                    </span>
-                                </td>
-                                <td><code><?php echo esc_html($ident->identifier_value); ?></code></td>
-                                <td><?php echo esc_html($ident->label ?: '-'); ?></td>
-                                <td>
-                                    <?php if ($ident->is_active) : ?>
+                                    <?php if ($fob->is_active) : ?>
                                         <span class="status-badge status-active">Active</span>
                                     <?php else : ?>
                                         <span class="status-badge status-inactive">Removed</span>
                                     <?php endif; ?>
                                 </td>
-                                <td><?php echo esc_html(date('Y-m-d', strtotime($ident->created_at))); ?></td>
+                                <td><?php echo esc_html(date('Y-m-d', strtotime($fob->created_at))); ?></td>
                                 <td>
-                                    <?php if ($ident->is_active) : ?>
+                                    <?php if ($fob->is_active) : ?>
                                         <form method="post" action="" style="display: inline;"
-                                              onsubmit="return confirm('Remove this identifier?');">
+                                              onsubmit="return confirm('Remove this RFID fob?');">
                                             <?php wp_nonce_field('loyalty_hub_admin', 'loyalty_hub_nonce'); ?>
                                             <input type="hidden" name="loyalty_hub_action" value="delete_identifier">
-                                            <input type="hidden" name="identifier_id" value="<?php echo esc_attr($ident->id); ?>">
+                                            <input type="hidden" name="identifier_id" value="<?php echo esc_attr($fob->id); ?>">
                                             <input type="hidden" name="customer_id" value="<?php echo esc_attr($editing->id); ?>">
                                             <button type="submit" class="button button-link-delete">Remove</button>
                                         </form>
@@ -409,8 +411,8 @@ if (!defined('ABSPATH')) {
                 </tbody>
             </table>
 
-            <!-- Add New Identifier Form -->
-            <h3 style="margin-top: 20px;">Add New Identifier</h3>
+            <!-- Add New RFID Fob Form -->
+            <h3 style="margin-top: 20px;">Add New RFID Fob</h3>
             <form method="post" action="">
                 <?php wp_nonce_field('loyalty_hub_admin', 'loyalty_hub_nonce'); ?>
                 <input type="hidden" name="loyalty_hub_action" value="add_identifier">
@@ -419,22 +421,11 @@ if (!defined('ABSPATH')) {
                 <table class="form-table">
                     <tr>
                         <th scope="row">
-                            <label for="identifier_type">Type</label>
-                        </th>
-                        <td>
-                            <select id="identifier_type" name="identifier_type" required>
-                                <option value="rfid">RFID Fob</option>
-                                <option value="qr">QR Code</option>
-                            </select>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">
-                            <label for="identifier_value">Code *</label>
+                            <label for="identifier_value">RFID Code *</label>
                         </th>
                         <td>
                             <input type="text" id="identifier_value" name="identifier_value" class="regular-text" required>
-                            <p class="description">The RFID fob code or QR code value.</p>
+                            <p class="description">The code from the physical fob.</p>
                         </td>
                     </tr>
                     <tr>
@@ -450,7 +441,7 @@ if (!defined('ABSPATH')) {
                 </table>
 
                 <p class="submit">
-                    <input type="submit" class="button button-secondary" value="Add Identifier">
+                    <input type="submit" class="button button-secondary" value="Add RFID Fob">
                 </p>
             </form>
         </div>
@@ -465,6 +456,7 @@ if (!defined('ABSPATH')) {
     font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
+    margin-right: 4px;
 }
 .identifier-badge.rfid {
     background: #e7f3ff;

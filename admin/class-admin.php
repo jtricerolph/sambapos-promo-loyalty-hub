@@ -332,12 +332,12 @@ class Loyalty_Hub_Admin {
              LIMIT $per_page OFFSET $offset"
         );
 
-        // Get identifiers for each customer (for display in list)
+        // Get RFID fobs for each customer (QR codes are on customer table now)
         foreach ($customers as &$customer) {
-            $customer->identifiers = $wpdb->get_results($wpdb->prepare(
+            $customer->rfid_fobs = $wpdb->get_results($wpdb->prepare(
                 "SELECT * FROM {$wpdb->prefix}loyalty_customer_identifiers
-                 WHERE customer_id = %d AND is_active = 1
-                 ORDER BY identifier_type, created_at",
+                 WHERE customer_id = %d AND is_active = 1 AND identifier_type = 'rfid'
+                 ORDER BY created_at",
                 $customer->id
             ));
         }
@@ -351,17 +351,18 @@ class Loyalty_Hub_Admin {
 
         // Check if editing
         $editing = null;
-        $editing_identifiers = array();
+        $editing_rfid_fobs = array();
         if (isset($_GET['edit']) && is_numeric($_GET['edit'])) {
             $editing = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM {$wpdb->prefix}loyalty_customers WHERE id = %d",
                 intval($_GET['edit'])
             ));
             if ($editing) {
-                $editing_identifiers = $wpdb->get_results($wpdb->prepare(
+                // Only get RFID fobs (QR code is on customer table)
+                $editing_rfid_fobs = $wpdb->get_results($wpdb->prepare(
                     "SELECT * FROM {$wpdb->prefix}loyalty_customer_identifiers
-                     WHERE customer_id = %d
-                     ORDER BY identifier_type, created_at",
+                     WHERE customer_id = %d AND identifier_type = 'rfid'
+                     ORDER BY created_at",
                     $editing->id
                 ));
             }
@@ -675,7 +676,16 @@ class Loyalty_Hub_Admin {
             }
         }
 
-        // Insert customer (without rfid_code/qr_code - those go in identifiers table)
+        // Generate unique QR code (stored on customer table)
+        do {
+            $qr_code = 'LH' . strtoupper(wp_generate_password(12, false, false));
+            $qr_exists = $wpdb->get_var($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE qr_code = %s",
+                $qr_code
+            ));
+        } while ($qr_exists);
+
+        // Insert customer with QR code
         $wpdb->insert(
             $wpdb->prefix . 'loyalty_customers',
             array(
@@ -684,9 +694,10 @@ class Loyalty_Hub_Admin {
                 'email'         => $email ?: null,
                 'phone'         => sanitize_text_field($_POST['customer_phone'] ?? ''),
                 'dob'           => sanitize_text_field($_POST['customer_dob'] ?? null) ?: null,
+                'qr_code'       => $qr_code,
                 'is_staff'      => isset($_POST['is_staff']) ? 1 : 0,
             ),
-            array('%d', '%s', '%s', '%s', '%s', '%d')
+            array('%d', '%s', '%s', '%s', '%s', '%s', '%d')
         );
 
         $customer_id = $wpdb->insert_id;
@@ -696,21 +707,7 @@ class Loyalty_Hub_Admin {
             exit;
         }
 
-        // Generate and insert QR code
-        $qr_code = 'LH' . strtoupper(wp_generate_password(12, false, false));
-        $wpdb->insert(
-            $wpdb->prefix . 'loyalty_customer_identifiers',
-            array(
-                'customer_id'      => $customer_id,
-                'identifier_type'  => 'qr',
-                'identifier_value' => $qr_code,
-                'label'            => 'Primary QR Code',
-                'is_active'        => 1,
-            ),
-            array('%d', '%s', '%s', '%s', '%d')
-        );
-
-        // Insert RFID if provided
+        // Insert RFID fob if provided (only RFID goes in identifiers table)
         if (!empty($rfid_code)) {
             $wpdb->insert(
                 $wpdb->prefix . 'loyalty_customer_identifiers',
@@ -803,17 +800,16 @@ class Loyalty_Hub_Admin {
     }
 
     /**
-     * Handle adding an identifier to a customer
+     * Handle adding an RFID fob to a customer
      */
     private function handle_add_identifier() {
         global $wpdb;
 
         $customer_id = intval($_POST['customer_id']);
         $identifier = sanitize_text_field($_POST['identifier_value']);
-        $type = sanitize_text_field($_POST['identifier_type'] ?? 'rfid');
         $label = sanitize_text_field($_POST['identifier_label'] ?? '');
 
-        // Check for duplicate
+        // Check for duplicate RFID
         $existing = $wpdb->get_var($wpdb->prepare(
             "SELECT id FROM {$wpdb->prefix}loyalty_customer_identifiers WHERE identifier_value = %s",
             $identifier
@@ -824,11 +820,12 @@ class Loyalty_Hub_Admin {
             exit;
         }
 
+        // Only RFID fobs go in identifiers table (QR codes are on customer table)
         $wpdb->insert(
             $wpdb->prefix . 'loyalty_customer_identifiers',
             array(
                 'customer_id'      => $customer_id,
-                'identifier_type'  => $type,
+                'identifier_type'  => 'rfid',
                 'identifier_value' => $identifier,
                 'label'            => $label ?: null,
                 'is_active'        => 1,
@@ -845,12 +842,12 @@ class Loyalty_Hub_Admin {
             array('%d')
         );
 
-        wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&edit=' . $customer_id . '&identifier_added=1'));
+        wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&edit=' . $customer_id . '&rfid_added=1'));
         exit;
     }
 
     /**
-     * Handle deleting an identifier
+     * Handle deleting an RFID fob
      */
     private function handle_delete_identifier() {
         global $wpdb;
@@ -876,7 +873,7 @@ class Loyalty_Hub_Admin {
             array('%d')
         );
 
-        wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&edit=' . $customer_id . '&identifier_removed=1'));
+        wp_redirect(admin_url('admin.php?page=loyalty-hub-customers&edit=' . $customer_id . '&rfid_removed=1'));
         exit;
     }
 
