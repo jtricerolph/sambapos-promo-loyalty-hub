@@ -220,8 +220,31 @@ if (!defined('ABSPATH')) {
                     </td>
                 </tr>
                 <tr class="loyalty-bonus-fields" style="display: none;">
+                    <th scope="row">Bonus Type</th>
+                    <td>
+                        <?php
+                        $bonus_type = 'multiplier';
+                        if (!empty($editing->bonus_add) && $editing->bonus_add > 0) {
+                            $bonus_type = 'add';
+                        }
+                        ?>
+                        <label style="margin-right: 15px;">
+                            <input type="radio" name="bonus_type" value="multiplier"
+                                   <?php checked($bonus_type, 'multiplier'); ?>
+                                   onchange="toggleBonusTypeFields()">
+                            Multiplier (e.g., 2x = double)
+                        </label>
+                        <label>
+                            <input type="radio" name="bonus_type" value="add"
+                                   <?php checked($bonus_type, 'add'); ?>
+                                   onchange="toggleBonusTypeFields()">
+                            Fixed Add (e.g., +5%)
+                        </label>
+                    </td>
+                </tr>
+                <tr class="loyalty-bonus-fields bonus-multiplier-field" style="display: none;">
                     <th scope="row">
-                        <label for="bonus_multiplier">Bonus Multiplier</label>
+                        <label for="bonus_multiplier">Multiplier</label>
                     </th>
                     <td>
                         <input type="number" id="bonus_multiplier" name="bonus_multiplier"
@@ -230,7 +253,23 @@ if (!defined('ABSPATH')) {
                         <span>x</span>
                         <p class="description">
                             Multiplies the customer's tier discount.
-                            E.g., 2 = double, 1.5 = 50% extra.
+                            E.g., 2 = double (10% becomes 20%), 1.5 = 50% extra.
+                        </p>
+                    </td>
+                </tr>
+                <tr class="loyalty-bonus-fields bonus-add-field" style="display: none;">
+                    <th scope="row">
+                        <label for="bonus_add">Add Percentage</label>
+                    </th>
+                    <td>
+                        <span>+</span>
+                        <input type="number" id="bonus_add" name="bonus_add"
+                               value="<?php echo esc_attr($editing->bonus_add ?? 5); ?>"
+                               min="1" max="50" step="0.5" class="small-text">
+                        <span>%</span>
+                        <p class="description">
+                            Adds a fixed % to the customer's tier discount.
+                            E.g., +5% means 10% becomes 15%.
                         </p>
                     </td>
                 </tr>
@@ -378,14 +417,33 @@ function togglePromoTypeFields() {
     if (type === 'loyalty_bonus') {
         promoFields.forEach(function(el) { el.style.display = 'none'; });
         bonusFields.forEach(function(el) { el.style.display = ''; });
+        toggleBonusTypeFields();
     } else {
         promoFields.forEach(function(el) { el.style.display = ''; });
         bonusFields.forEach(function(el) { el.style.display = 'none'; });
     }
 }
 
+function toggleBonusTypeFields() {
+    var bonusType = document.querySelector('input[name="bonus_type"]:checked');
+    var multiplierField = document.querySelector('.bonus-multiplier-field');
+    var addField = document.querySelector('.bonus-add-field');
+
+    if (!bonusType || !multiplierField || !addField) return;
+
+    if (bonusType.value === 'add') {
+        multiplierField.style.display = 'none';
+        addField.style.display = '';
+    } else {
+        multiplierField.style.display = '';
+        addField.style.display = 'none';
+    }
+}
+
 // Run on page load
-document.addEventListener('DOMContentLoaded', togglePromoTypeFields);
+document.addEventListener('DOMContentLoaded', function() {
+    togglePromoTypeFields();
+});
 </script>
 
 <style>
