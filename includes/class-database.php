@@ -356,7 +356,7 @@ class Loyalty_Hub_Database {
             code varchar(50) NOT NULL,
             name varchar(100) NOT NULL,
             description text,
-            type enum('loyalty_bonus', 'promo_code') NOT NULL DEFAULT 'promo_code',
+            type varchar(20) NOT NULL DEFAULT 'promo_code',
             hotel_id bigint(20) unsigned DEFAULT NULL,
             wet_discount decimal(5,2) DEFAULT NULL,
             dry_discount decimal(5,2) DEFAULT NULL,
