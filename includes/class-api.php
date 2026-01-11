@@ -770,10 +770,10 @@ class Loyalty_Hub_API {
         $email = $request->get_param('email');
         $rfid_code = $request->get_param('rfid_code');
 
-        // Check for duplicate email
+        // Check for duplicate email (only among active customers)
         if (!empty($email)) {
             $existing = $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE email = %s",
+                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE email = %s AND is_active = 1",
                 $email
             ));
             if ($existing) {

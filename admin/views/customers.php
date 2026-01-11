@@ -368,7 +368,6 @@ if (!defined('ABSPATH')) {
                     <tr>
                         <th>RFID Code</th>
                         <th>Label</th>
-                        <th>Status</th>
                         <th>Added</th>
                         <th>Actions</th>
                     </tr>
@@ -376,34 +375,23 @@ if (!defined('ABSPATH')) {
                 <tbody>
                     <?php if (empty($editing_rfid_fobs)) : ?>
                         <tr>
-                            <td colspan="5">No RFID fobs. Add one below.</td>
+                            <td colspan="4">No RFID fobs. Add one below.</td>
                         </tr>
                     <?php else : ?>
                         <?php foreach ($editing_rfid_fobs as $fob) : ?>
-                            <tr class="<?php echo $fob->is_active ? '' : 'inactive-row'; ?>">
+                            <tr>
                                 <td><code><?php echo esc_html($fob->identifier_value); ?></code></td>
                                 <td><?php echo esc_html($fob->label ?: '-'); ?></td>
-                                <td>
-                                    <?php if ($fob->is_active) : ?>
-                                        <span class="status-badge status-active">Active</span>
-                                    <?php else : ?>
-                                        <span class="status-badge status-inactive">Removed</span>
-                                    <?php endif; ?>
-                                </td>
                                 <td><?php echo esc_html(date('Y-m-d', strtotime($fob->created_at))); ?></td>
                                 <td>
-                                    <?php if ($fob->is_active) : ?>
-                                        <form method="post" action="" style="display: inline;"
-                                              onsubmit="return confirm('Remove this RFID fob?');">
-                                            <?php wp_nonce_field('loyalty_hub_admin', 'loyalty_hub_nonce'); ?>
-                                            <input type="hidden" name="loyalty_hub_action" value="delete_identifier">
-                                            <input type="hidden" name="identifier_id" value="<?php echo esc_attr($fob->id); ?>">
-                                            <input type="hidden" name="customer_id" value="<?php echo esc_attr($editing->id); ?>">
-                                            <button type="submit" class="button button-link-delete">Remove</button>
-                                        </form>
-                                    <?php else : ?>
-                                        <span style="color: #999;">-</span>
-                                    <?php endif; ?>
+                                    <form method="post" action="" style="display: inline;"
+                                          onsubmit="return confirm('Remove this RFID fob? This cannot be undone.');">
+                                        <?php wp_nonce_field('loyalty_hub_admin', 'loyalty_hub_nonce'); ?>
+                                        <input type="hidden" name="loyalty_hub_action" value="delete_identifier">
+                                        <input type="hidden" name="identifier_id" value="<?php echo esc_attr($fob->id); ?>">
+                                        <input type="hidden" name="customer_id" value="<?php echo esc_attr($editing->id); ?>">
+                                        <button type="submit" class="button button-link-delete">Remove</button>
+                                    </form>
                                 </td>
                             </tr>
                         <?php endforeach; ?>
@@ -465,9 +453,6 @@ if (!defined('ABSPATH')) {
 .identifier-badge.qr {
     background: #f0f0f1;
     color: #50575e;
-}
-.inactive-row {
-    opacity: 0.5;
 }
 .button-link-delete {
     color: #b32d2e !important;

@@ -652,10 +652,10 @@ class Loyalty_Hub_Admin {
         $email = sanitize_email($_POST['customer_email']);
         $rfid_code = sanitize_text_field($_POST['rfid_code'] ?? '');
 
-        // Check for duplicate email
+        // Check for duplicate email (only among active customers)
         if (!empty($email)) {
             $existing_email = $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE email = %s",
+                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE email = %s AND is_active = 1",
                 $email
             ));
             if ($existing_email) {
@@ -735,10 +735,10 @@ class Loyalty_Hub_Admin {
         $id = intval($_POST['customer_id']);
         $email = sanitize_email($_POST['customer_email']);
 
-        // Check for duplicate email (excluding current customer)
+        // Check for duplicate email (excluding current customer, only among active)
         if (!empty($email)) {
             $existing_email = $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE email = %s AND id != %d",
+                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE email = %s AND id != %d AND is_active = 1",
                 $email,
                 $id
             ));
@@ -770,14 +770,14 @@ class Loyalty_Hub_Admin {
     }
 
     /**
-     * Handle deleting a customer (soft delete)
+     * Handle deleting a customer (soft delete customer, hard delete RFID fobs)
      */
     private function handle_delete_customer() {
         global $wpdb;
 
         $id = intval($_POST['customer_id']);
 
-        // Soft delete - set is_active = 0
+        // Soft delete customer - preserves transaction history references
         $wpdb->update(
             $wpdb->prefix . 'loyalty_customers',
             array('is_active' => 0),
@@ -786,12 +786,10 @@ class Loyalty_Hub_Admin {
             array('%d')
         );
 
-        // Also deactivate all identifiers
-        $wpdb->update(
+        // Hard delete RFID fobs - they don't need historical tracking
+        $wpdb->delete(
             $wpdb->prefix . 'loyalty_customer_identifiers',
-            array('is_active' => 0),
             array('customer_id' => $id),
-            array('%d'),
             array('%d')
         );
 
@@ -847,7 +845,7 @@ class Loyalty_Hub_Admin {
     }
 
     /**
-     * Handle deleting an RFID fob
+     * Handle deleting an RFID fob (hard delete)
      */
     private function handle_delete_identifier() {
         global $wpdb;
@@ -855,12 +853,10 @@ class Loyalty_Hub_Admin {
         $identifier_id = intval($_POST['identifier_id']);
         $customer_id = intval($_POST['customer_id']);
 
-        // Soft delete (set is_active = 0)
-        $wpdb->update(
+        // Hard delete - RFID fobs don't need historical tracking
+        $wpdb->delete(
             $wpdb->prefix . 'loyalty_customer_identifiers',
-            array('is_active' => 0),
             array('id' => $identifier_id),
-            array('%d'),
             array('%d')
         );
 
