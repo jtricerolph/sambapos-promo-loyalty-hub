@@ -80,12 +80,12 @@ class Loyalty_Hub_API {
          * =================================================================
          * POST /identify
          * =================================================================
-         * Look up a customer by RFID code or QR code.
+         * Look up a customer by any identifier (RFID, QR code, or email).
          * Returns tier information and discount rates.
          *
          * Request body:
-         *   rfid_code: string (optional) - RFID fob code
-         *   qr_code: string (optional) - QR code from app
+         *   identifier: string - RFID code, QR code, or email address
+         *                        (searches all identifier types)
          *
          * Response:
          *   customer_id: int
@@ -96,21 +96,18 @@ class Loyalty_Hub_API {
          *   dry_discount: float
          *   discount_type: string (discount/staff)
          *   available_promos: array
+         *   next_tier: object (null for staff)
          */
         register_rest_route(self::NAMESPACE, '/identify', array(
             'methods'             => 'POST',
             'callback'            => array(__CLASS__, 'identify_customer'),
             'permission_callback' => array(__CLASS__, 'authenticate_api_key'),
             'args'                => array(
-                'rfid_code' => array(
+                'identifier' => array(
                     'type'              => 'string',
-                    'required'          => false,
+                    'required'          => true,
                     'sanitize_callback' => 'sanitize_text_field',
-                ),
-                'qr_code' => array(
-                    'type'              => 'string',
-                    'required'          => false,
-                    'sanitize_callback' => 'sanitize_text_field',
+                    'description'       => 'RFID code, QR code, or email address',
                 ),
             ),
         ));
@@ -241,14 +238,14 @@ class Loyalty_Hub_API {
          * GET /sync
          * =================================================================
          * Bulk sync customers for offline caching.
-         * Returns all active customers with basic info for local lookup.
+         * Returns all active customers with their identifiers.
          *
          * Query params:
          *   updated_since: string (optional, ISO 8601 datetime)
          *                  Only return customers updated after this time
          *
          * Response:
-         *   customers: array of {id, name, rfid_code, qr_code, is_staff}
+         *   customers: array of {id, name, email, is_staff, identifiers: [...]}
          *   sync_time: string (current server time for next sync)
          */
         register_rest_route(self::NAMESPACE, '/sync', array(
@@ -257,6 +254,51 @@ class Loyalty_Hub_API {
             'permission_callback' => array(__CLASS__, 'authenticate_api_key'),
             'args'                => array(
                 'updated_since' => array(
+                    'type'              => 'string',
+                    'required'          => false,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+            ),
+        ));
+
+        /*
+         * =================================================================
+         * POST /identifier/add
+         * =================================================================
+         * Add an additional identifier (RFID fob) to an existing customer.
+         * Useful for couples sharing an account.
+         *
+         * Request body:
+         *   customer_id: int (required)
+         *   identifier: string (required, the RFID/QR code)
+         *   type: string (optional, 'rfid' or 'qr', default 'rfid')
+         *   label: string (optional, friendly name like "Wife's fob")
+         *
+         * Response:
+         *   success: bool
+         *   identifier_id: int
+         */
+        register_rest_route(self::NAMESPACE, '/identifier/add', array(
+            'methods'             => 'POST',
+            'callback'            => array(__CLASS__, 'add_identifier'),
+            'permission_callback' => array(__CLASS__, 'authenticate_api_key'),
+            'args'                => array(
+                'customer_id' => array(
+                    'type'     => 'integer',
+                    'required' => true,
+                ),
+                'identifier' => array(
+                    'type'              => 'string',
+                    'required'          => true,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'type' => array(
+                    'type'              => 'string',
+                    'required'          => false,
+                    'default'           => 'rfid',
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+                'label' => array(
                     'type'              => 'string',
                     'required'          => false,
                     'sanitize_callback' => 'sanitize_text_field',
@@ -422,31 +464,36 @@ class Loyalty_Hub_API {
     public static function identify_customer($request) {
         global $wpdb;
 
-        $rfid_code = $request->get_param('rfid_code');
-        $qr_code = $request->get_param('qr_code');
+        $identifier = $request->get_param('identifier');
         $hotel_id = $request->get_param('_hotel_id');
 
-        // Must provide at least one identifier
-        if (empty($rfid_code) && empty($qr_code)) {
-            return new WP_Error(
-                'missing_identifier',
-                'Either rfid_code or qr_code is required',
-                array('status' => 400)
-            );
+        // Search for customer by identifier
+        // Priority: 1) Identifiers table (RFID/QR), 2) Email
+        $customer = null;
+
+        // First, check the identifiers table
+        $identifier_record = $wpdb->get_row($wpdb->prepare(
+            "SELECT ci.customer_id, ci.identifier_type, ci.label
+             FROM {$wpdb->prefix}loyalty_customer_identifiers ci
+             WHERE ci.identifier_value = %s AND ci.is_active = 1",
+            $identifier
+        ));
+
+        if ($identifier_record) {
+            // Found in identifiers table, get the customer
+            $customer = $wpdb->get_row($wpdb->prepare(
+                "SELECT * FROM {$wpdb->prefix}loyalty_customers
+                 WHERE id = %d AND is_active = 1",
+                $identifier_record->customer_id
+            ));
         }
 
-        // Look up customer by identifier
-        if (!empty($rfid_code)) {
+        // If not found, try email lookup
+        if (!$customer) {
             $customer = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM {$wpdb->prefix}loyalty_customers
-                 WHERE rfid_code = %s AND is_active = 1",
-                $rfid_code
-            ));
-        } else {
-            $customer = $wpdb->get_row($wpdb->prepare(
-                "SELECT * FROM {$wpdb->prefix}loyalty_customers
-                 WHERE qr_code = %s AND is_active = 1",
-                $qr_code
+                 WHERE email = %s AND is_active = 1",
+                $identifier
             ));
         }
 
@@ -465,17 +512,23 @@ class Loyalty_Hub_API {
             return $tier_result;
         }
 
-        // Get available promos for this customer
-        $available_promos = Loyalty_Hub_Promo_Handler::get_available_promos(
-            $customer->id,
-            $hotel_id
-        );
+        // Get available promos for this customer (not for staff)
+        $available_promos = array();
+        if (!$tier_result['is_staff']) {
+            $available_promos = Loyalty_Hub_Promo_Handler::get_available_promos(
+                $customer->id,
+                $hotel_id
+            );
+        }
 
-        // Get next tier info (for "X more visits to reach Y tier!" messaging)
-        $next_tier_info = Loyalty_Hub_Tier_Calculator::get_next_tier_info(
-            $customer->id,
-            $hotel_id
-        );
+        // Get next tier info (only for non-staff)
+        $next_tier_info = null;
+        if (!$tier_result['is_staff']) {
+            $next_tier_info = Loyalty_Hub_Tier_Calculator::get_next_tier_info(
+                $customer->id,
+                $hotel_id
+            );
+        }
 
         // Build response
         $response = array(
@@ -493,6 +546,14 @@ class Loyalty_Hub_API {
             'available_promos' => $available_promos,
             'next_tier'        => $next_tier_info,
         );
+
+        // Add identifier info if matched from identifiers table
+        if ($identifier_record) {
+            $response['matched_identifier_type'] = $identifier_record->identifier_type;
+            if ($identifier_record->label) {
+                $response['identifier_label'] = $identifier_record->label;
+            }
+        }
 
         return new WP_REST_Response($response, 200);
     }
@@ -664,6 +725,7 @@ class Loyalty_Hub_API {
      *
      * Creates a new customer account.
      * Home hotel is set to the hotel making the API call.
+     * Identifiers (RFID, QR) are stored in the identifiers table.
      *
      * @since 1.0.0
      *
@@ -694,10 +756,10 @@ class Loyalty_Hub_API {
             }
         }
 
-        // Check for duplicate RFID
+        // Check for duplicate RFID in identifiers table
         if (!empty($rfid_code)) {
             $existing = $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE rfid_code = %s",
+                "SELECT id FROM {$wpdb->prefix}loyalty_customer_identifiers WHERE identifier_value = %s",
                 $rfid_code
             ));
             if ($existing) {
@@ -712,15 +774,13 @@ class Loyalty_Hub_API {
         // Generate QR code (unique identifier for app)
         $qr_code = self::generate_qr_code();
 
-        // Insert customer
+        // Insert customer (without rfid_code/qr_code - those go in identifiers table)
         $customer_data = array(
             'home_hotel_id' => $hotel_id,
             'name'          => $name,
             'email'         => $email,
             'phone'         => $request->get_param('phone'),
             'dob'           => $request->get_param('dob'),
-            'rfid_code'     => $rfid_code,
-            'qr_code'       => $qr_code,
             'is_staff'      => 0,
             'is_active'     => 1,
         );
@@ -728,7 +788,7 @@ class Loyalty_Hub_API {
         $wpdb->insert(
             $wpdb->prefix . 'loyalty_customers',
             $customer_data,
-            array('%d', '%s', '%s', '%s', '%s', '%s', '%s', '%d', '%d')
+            array('%d', '%s', '%s', '%s', '%s', '%d', '%d')
         );
 
         $customer_id = $wpdb->insert_id;
@@ -738,6 +798,34 @@ class Loyalty_Hub_API {
                 'registration_failed',
                 'Failed to register customer',
                 array('status' => 500)
+            );
+        }
+
+        // Insert QR code into identifiers table
+        $wpdb->insert(
+            $wpdb->prefix . 'loyalty_customer_identifiers',
+            array(
+                'customer_id'      => $customer_id,
+                'identifier_type'  => 'qr',
+                'identifier_value' => $qr_code,
+                'label'            => 'Primary QR Code',
+                'is_active'        => 1,
+            ),
+            array('%d', '%s', '%s', '%s', '%d')
+        );
+
+        // Insert RFID into identifiers table if provided
+        if (!empty($rfid_code)) {
+            $wpdb->insert(
+                $wpdb->prefix . 'loyalty_customer_identifiers',
+                array(
+                    'customer_id'      => $customer_id,
+                    'identifier_type'  => 'rfid',
+                    'identifier_value' => $rfid_code,
+                    'label'            => 'Primary RFID Fob',
+                    'is_active'        => 1,
+                ),
+                array('%d', '%s', '%s', '%s', '%d')
             );
         }
 
@@ -763,6 +851,7 @@ class Loyalty_Hub_API {
      *
      * Creates a random alphanumeric string that can be used
      * to identify the customer via QR code in the app.
+     * Checks the identifiers table for uniqueness.
      *
      * @since 1.0.0
      *
@@ -771,11 +860,11 @@ class Loyalty_Hub_API {
     private static function generate_qr_code() {
         global $wpdb;
 
-        // Generate unique code
+        // Generate unique code - check identifiers table
         do {
             $qr_code = 'LH' . strtoupper(wp_generate_password(12, false, false));
             $exists = $wpdb->get_var($wpdb->prepare(
-                "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE qr_code = %s",
+                "SELECT id FROM {$wpdb->prefix}loyalty_customer_identifiers WHERE identifier_value = %s",
                 $qr_code
             ));
         } while ($exists);
@@ -786,8 +875,9 @@ class Loyalty_Hub_API {
     /**
      * GET /sync - Bulk sync customers for offline caching
      *
-     * Returns all active customers with basic info.
+     * Returns all active customers with their identifiers.
      * Optionally filtered by updated_since for incremental syncs.
+     * Identifiers are included as an array for each customer.
      *
      * @since 1.0.0
      *
@@ -800,8 +890,8 @@ class Loyalty_Hub_API {
 
         $updated_since = $request->get_param('updated_since');
 
-        // Build query
-        $sql = "SELECT id, name, rfid_code, qr_code, is_staff, home_hotel_id, updated_at
+        // Build customer query (identifiers are now in separate table)
+        $sql = "SELECT id, name, email, is_staff, home_hotel_id, updated_at
                 FROM {$wpdb->prefix}loyalty_customers
                 WHERE is_active = 1";
 
@@ -813,11 +903,118 @@ class Loyalty_Hub_API {
 
         $customers = $wpdb->get_results($sql);
 
+        // Attach identifiers to each customer
+        foreach ($customers as &$customer) {
+            $identifiers = $wpdb->get_results($wpdb->prepare(
+                "SELECT identifier_type, identifier_value, label
+                 FROM {$wpdb->prefix}loyalty_customer_identifiers
+                 WHERE customer_id = %d AND is_active = 1",
+                $customer->id
+            ));
+            $customer->identifiers = $identifiers;
+        }
+
         return new WP_REST_Response(array(
             'customers' => $customers,
             'count'     => count($customers),
             'sync_time' => current_time('mysql'),
         ), 200);
+    }
+
+    /**
+     * POST /identifier/add - Add an identifier to a customer
+     *
+     * Allows adding additional RFID fobs to an existing customer.
+     * Useful for couples or families sharing a loyalty account.
+     *
+     * @since 1.0.0
+     *
+     * @param WP_REST_Request $request The REST request
+     *
+     * @return WP_REST_Response|WP_Error Response with identifier data
+     */
+    public static function add_identifier($request) {
+        global $wpdb;
+
+        $customer_id = $request->get_param('customer_id');
+        $identifier = $request->get_param('identifier');
+        $type = $request->get_param('type');
+        $label = $request->get_param('label');
+
+        // Validate type
+        if (!in_array($type, array('rfid', 'qr'))) {
+            $type = 'rfid';
+        }
+
+        // Check customer exists
+        $customer = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE id = %d AND is_active = 1",
+            $customer_id
+        ));
+
+        if (!$customer) {
+            return new WP_Error(
+                'customer_not_found',
+                'Customer not found',
+                array('status' => 404)
+            );
+        }
+
+        // Check identifier doesn't already exist
+        $existing = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}loyalty_customer_identifiers WHERE identifier_value = %s",
+            $identifier
+        ));
+
+        if ($existing) {
+            return new WP_Error(
+                'duplicate_identifier',
+                'This identifier is already registered',
+                array('status' => 409)
+            );
+        }
+
+        // Insert identifier
+        $wpdb->insert(
+            $wpdb->prefix . 'loyalty_customer_identifiers',
+            array(
+                'customer_id'      => $customer_id,
+                'identifier_type'  => $type,
+                'identifier_value' => $identifier,
+                'label'            => $label ?: null,
+                'is_active'        => 1,
+            ),
+            array('%d', '%s', '%s', '%s', '%d')
+        );
+
+        $identifier_id = $wpdb->insert_id;
+
+        if (!$identifier_id) {
+            return new WP_Error(
+                'insert_failed',
+                'Failed to add identifier',
+                array('status' => 500)
+            );
+        }
+
+        // Update customer's updated_at timestamp for sync purposes
+        $wpdb->update(
+            $wpdb->prefix . 'loyalty_customers',
+            array('updated_at' => current_time('mysql')),
+            array('id' => $customer_id),
+            array('%s'),
+            array('%d')
+        );
+
+        return new WP_REST_Response(array(
+            'success'       => true,
+            'identifier_id' => $identifier_id,
+            'customer_id'   => $customer_id,
+            'type'          => $type,
+            'value'         => $identifier,
+            'label'         => $label,
+            'message'       => 'Identifier added successfully',
+        ), 201);
     }
 
     /**

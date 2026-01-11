@@ -27,19 +27,22 @@ var API_KEY = 'your-64-character-api-key-here';
 // =============================================================================
 
 /**
- * Identify customer by RFID code
+ * Identify customer by scanned code
  *
- * Trigger: Automation command on RFID scan
- * Sets ticket states with tier and discount information
+ * Trigger: Automation command on RFID/QR scan
+ * Sets ticket states with tier and discount information.
  *
- * @param {string} rfidCode - The scanned RFID code
+ * The API accepts any identifier type (RFID, QR, or email) in a single field,
+ * so this works with both RFID fobs and QR codes from the numberpad.
+ *
+ * @param {string} scannedCode - The scanned RFID or QR code
  */
-function identifyCustomer(rfidCode) {
+function identifyCustomer(scannedCode) {
     try {
-        // Build API request
+        // Build API request - uses generic 'identifier' field
         var url = API_BASE_URL + '/identify';
         var payload = JSON.stringify({
-            rfid_code: rfidCode
+            identifier: scannedCode
         });
 
         // Make HTTP request
@@ -66,14 +69,14 @@ function identifyCustomer(rfidCode) {
         message += 'Tier: ' + data.tier + '\n';
         message += 'Discount: ' + data.wet_discount + '% drinks / ' + data.dry_discount + '% food';
 
-        // Show available promos if any
+        // Show available promos if any (not shown for staff)
         if (data.available_promos && data.available_promos.length > 0) {
             showAvailablePromos(data.name, data.tier, data.available_promos);
         } else {
             dlg.ShowMessage(message);
         }
 
-        // Show next tier info if available
+        // Show next tier info if available (not shown for staff)
         if (data.next_tier) {
             var nextTierMsg = '\n\n' + data.next_tier.visits_to_go + ' more visits to reach ' + data.next_tier.next_tier + ' tier!';
             // Could show this as a separate notification
@@ -413,8 +416,11 @@ function registerCustomer() {
  *
  * Trigger: Automation rule on workperiod start or scheduled
  *
- * Downloads all customers to local cache for offline lookup.
- * In offline mode, use cached data instead of API calls.
+ * Downloads all customers with their identifiers to local cache.
+ * Each identifier (RFID fob, QR code) is stored as a lookup key
+ * pointing to the customer data, supporting multiple fobs per customer.
+ *
+ * In offline mode, use getCachedCustomer() instead of API calls.
  */
 function syncCustomerCache() {
     try {
@@ -428,12 +434,22 @@ function syncCustomerCache() {
         var response = api.HttpGet(url, 'X-API-Key:' + API_KEY);
         var data = JSON.parse(response);
 
-        // Store customers in local setting or database
-        // Implementation depends on your SambaPOS version
+        // Store customers in local cache
+        // Each identifier (RFID/QR) becomes a lookup key pointing to customer data
         for (var i = 0; i < data.customers.length; i++) {
             var customer = data.customers[i];
-            // Store in local cache - e.g., SambaPOS setting or custom table
-            api.SetSettingValue('LoyaltyCache_' + customer.rfid_code, JSON.stringify(customer));
+
+            // Store customer data by ID
+            api.SetSettingValue('LoyaltyCustomer_' + customer.id, JSON.stringify(customer));
+
+            // Create lookup entries for each identifier (RFID, QR, etc.)
+            if (customer.identifiers && customer.identifiers.length > 0) {
+                for (var j = 0; j < customer.identifiers.length; j++) {
+                    var ident = customer.identifiers[j];
+                    // Store customer ID reference by identifier value
+                    api.SetSettingValue('LoyaltyCache_' + ident.identifier_value, customer.id.toString());
+                }
+            }
         }
 
         // Update last sync time
@@ -449,15 +465,72 @@ function syncCustomerCache() {
 /**
  * Look up customer from local cache (offline mode)
  *
- * @param {string} rfidCode - The scanned RFID code
+ * Supports any identifier type (RFID, QR, email) - same as online API.
+ * Handles multiple RFID fobs per customer.
+ *
+ * @param {string} identifier - The scanned RFID/QR code
  * @returns {object|null} Customer data or null if not found
  */
-function getCachedCustomer(rfidCode) {
-    var cached = api.GetSettingValue('LoyaltyCache_' + rfidCode);
+function getCachedCustomer(identifier) {
+    // Look up customer ID from identifier
+    var customerId = api.GetSettingValue('LoyaltyCache_' + identifier);
+    if (!customerId) {
+        return null;
+    }
+
+    // Get full customer data by ID
+    var cached = api.GetSettingValue('LoyaltyCustomer_' + customerId);
     if (cached) {
         return JSON.parse(cached);
     }
     return null;
+}
+
+// =============================================================================
+// IDENTIFIER MANAGEMENT
+// =============================================================================
+
+/**
+ * Add an additional RFID fob to current customer
+ *
+ * Trigger: Automation command with RFID scan while customer is on ticket
+ * Useful for couples/families sharing a loyalty account
+ *
+ * @param {string} newRfidCode - The new RFID code to add
+ * @param {string} label - Optional friendly label (e.g., "Wife's fob")
+ */
+function addCustomerFob(newRfidCode, label) {
+    try {
+        var customerId = api.GetTicketState('CustomerID');
+
+        if (!customerId) {
+            dlg.ShowMessage('No customer on ticket. Identify customer first.');
+            return;
+        }
+
+        var url = API_BASE_URL + '/identifier/add';
+        var payload = JSON.stringify({
+            customer_id: parseInt(customerId),
+            identifier: newRfidCode,
+            type: 'rfid',
+            label: label || null
+        });
+
+        var response = api.HttpPost(url, payload, 'application/json', 'X-API-Key:' + API_KEY);
+        var data = JSON.parse(response);
+
+        if (data.error) {
+            dlg.ShowMessage('Error: ' + data.error);
+            return;
+        }
+
+        var customerName = api.GetTicketState('CustomerName');
+        dlg.ShowMessage('Added RFID fob for ' + customerName + '\n' +
+            (label ? 'Label: ' + label : ''));
+
+    } catch (ex) {
+        dlg.ShowMessage('Error adding fob: ' + ex.message);
+    }
 }
 
 // =============================================================================

@@ -215,19 +215,46 @@ class Loyalty_Hub_Database {
             email varchar(255),
             phone varchar(20),
             dob date,
-            rfid_code varchar(50),
-            qr_code varchar(100),
             is_staff tinyint(1) DEFAULT 0,
             is_active tinyint(1) DEFAULT 1,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
             updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             PRIMARY KEY (id),
-            UNIQUE KEY rfid_code (rfid_code),
-            UNIQUE KEY qr_code (qr_code),
             KEY home_hotel_id (home_hotel_id),
             KEY email (email)
         ) $charset_collate;";
         dbDelta($sql_customers);
+
+        /*
+         * =================================================================
+         * CUSTOMER IDENTIFIERS TABLE
+         * =================================================================
+         * Stores multiple identifiers (RFID fobs, QR codes) per customer.
+         *
+         * This allows:
+         * - Multiple RFID fobs per customer (for couples/families)
+         * - Both RFID and QR codes for same customer
+         * - Easy lookup by any identifier type
+         *
+         * identifier_type values: 'rfid', 'qr'
+         * identifier_value: The actual code scanned
+         * label: Optional friendly name (e.g., "John's fob", "Wife's fob")
+         */
+        $table_identifiers = $wpdb->prefix . 'loyalty_customer_identifiers';
+        $sql_identifiers = "CREATE TABLE $table_identifiers (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            customer_id bigint(20) unsigned NOT NULL,
+            identifier_type varchar(20) NOT NULL,
+            identifier_value varchar(100) NOT NULL,
+            label varchar(50),
+            is_active tinyint(1) DEFAULT 1,
+            created_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY identifier_value (identifier_value),
+            KEY customer_id (customer_id),
+            KEY identifier_type (identifier_type)
+        ) $charset_collate;";
+        dbDelta($sql_identifiers);
 
         /*
          * =================================================================
@@ -503,6 +530,7 @@ class Loyalty_Hub_Database {
             'loyalty_customer_preferences',
             'loyalty_transaction_items',
             'loyalty_transactions',
+            'loyalty_customer_identifiers',
             'loyalty_customers',
             'loyalty_hotel_staff_rates',
             'loyalty_hotel_tiers',

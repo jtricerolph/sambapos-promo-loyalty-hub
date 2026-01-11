@@ -79,20 +79,18 @@ X-API-Key: your-64-character-api-key
 
 #### POST /wp-json/loyalty/v1/identify
 
-Look up a customer by RFID or QR code.
+Look up a customer by any identifier (RFID, QR code, or email).
 
 **Request:**
 ```json
 {
-  "rfid_code": "1234567890"
+  "identifier": "1234567890"
 }
 ```
-or
-```json
-{
-  "qr_code": "LH1A2B3C4D5E6F"
-}
-```
+
+The identifier can be an RFID code, QR code, or email address. The system searches in this order:
+1. Identifiers table (RFID fobs and QR codes)
+2. Customer email
 
 **Response:**
 ```json
@@ -104,7 +102,8 @@ or
   "wet_discount": 8.00,
   "dry_discount": 15.00,
   "discount_type": "discount",
-  "total_visits_28d": 5,
+  "total_visits": 5,
+  "period_days": 28,
   "home_hotel": "Number Four",
   "available_promos": [
     {
@@ -119,6 +118,8 @@ or
   }
 }
 ```
+
+Note: `available_promos` and `next_tier` are not returned for staff members.
 
 #### POST /wp-json/loyalty/v1/transaction
 
@@ -176,14 +177,52 @@ Bulk sync customers for offline caching.
     {
       "id": 123,
       "name": "John Smith",
-      "rfid_code": "1234567890",
-      "qr_code": "LH1A2B3C4D5E6F",
+      "email": "john@example.com",
       "is_staff": false,
-      "home_hotel_id": 1
+      "home_hotel_id": 1,
+      "identifiers": [
+        {
+          "identifier_type": "rfid",
+          "identifier_value": "1234567890",
+          "label": "Primary RFID Fob"
+        },
+        {
+          "identifier_type": "qr",
+          "identifier_value": "LH1A2B3C4D5E6F",
+          "label": "Primary QR Code"
+        }
+      ]
     }
   ],
   "count": 150,
   "sync_time": "2024-01-15 10:30:00"
+}
+```
+
+#### POST /wp-json/loyalty/v1/identifier/add
+
+Add an additional identifier (RFID fob) to an existing customer. Useful for couples sharing an account.
+
+**Request:**
+```json
+{
+  "customer_id": 123,
+  "identifier": "9876543210",
+  "type": "rfid",
+  "label": "Wife's fob"
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "identifier_id": 456,
+  "customer_id": 123,
+  "type": "rfid",
+  "value": "9876543210",
+  "label": "Wife's fob",
+  "message": "Identifier added successfully"
 }
 ```
 
