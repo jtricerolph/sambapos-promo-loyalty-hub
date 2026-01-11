@@ -94,8 +94,10 @@ if ($editing) {
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <?php if (!empty($promo->bonus_add) && $promo->bonus_add > 0) : ?>
-                                    <span class="bonus-badge">+<?php echo esc_html($promo->bonus_add); ?>%</span>
+                                <?php if (!empty($promo->bonus_add_wet) || !empty($promo->bonus_add_dry)) : ?>
+                                    <span class="bonus-badge">+<?php echo esc_html($promo->bonus_add_wet ?? 0); ?>%</span> /
+                                    <span class="bonus-badge">+<?php echo esc_html($promo->bonus_add_dry ?? 0); ?>%</span>
+                                    <br><span class="description">wet / dry</span>
                                 <?php else : ?>
                                     <span class="bonus-badge"><?php echo esc_html($promo->bonus_multiplier); ?>x</span>
                                 <?php endif; ?>
@@ -290,7 +292,7 @@ if ($editing) {
                         <td>
                             <?php
                             $bonus_type = 'multiplier';
-                            if (!empty($editing->bonus_add) && $editing->bonus_add > 0) {
+                            if (!empty($editing->bonus_add_wet) || !empty($editing->bonus_add_dry)) {
                                 $bonus_type = 'add';
                             }
                             ?>
@@ -305,7 +307,7 @@ if ($editing) {
                                 <input type="radio" name="bonus_type" value="add"
                                        <?php checked($bonus_type, 'add'); ?>
                                        onchange="toggleBonusTypeFields()">
-                                <strong>Fixed Add</strong> - Add fixed % to tier discount (e.g., +5%)
+                                <strong>Fixed Add</strong> - Add fixed % to tier discount
                             </label>
                         </td>
                     </tr>
@@ -324,17 +326,23 @@ if ($editing) {
                         </td>
                     </tr>
                     <tr class="bonus-add-field" style="display: none;">
-                        <th scope="row">
-                            <label for="bonus_add">Add Percentage</label>
-                        </th>
+                        <th scope="row">Add Percentages</th>
                         <td>
-                            <span>+</span>
-                            <input type="number" id="bonus_add" name="bonus_add"
-                                   value="<?php echo esc_attr($editing->bonus_add ?? 5); ?>"
-                                   min="1" max="50" step="0.5" class="small-text">
-                            <span>%</span>
+                            <label>
+                                Wet (drinks): +
+                                <input type="number" id="bonus_add_wet" name="bonus_add_wet"
+                                       value="<?php echo esc_attr($editing->bonus_add_wet ?? 5); ?>"
+                                       min="0" max="50" step="0.5" class="small-text">%
+                            </label>
+                            &nbsp;&nbsp;
+                            <label>
+                                Dry (food): +
+                                <input type="number" id="bonus_add_dry" name="bonus_add_dry"
+                                       value="<?php echo esc_attr($editing->bonus_add_dry ?? 10); ?>"
+                                       min="0" max="50" step="0.5" class="small-text">%
+                            </label>
                             <p class="description">
-                                E.g., +5% means 10% tier discount becomes 15%
+                                Added to tier discount. E.g., +5% wet / +10% dry means 10% tier becomes 15% / 20%.
                             </p>
                         </td>
                     </tr>

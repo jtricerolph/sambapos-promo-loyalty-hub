@@ -919,10 +919,12 @@ class Loyalty_Hub_Admin {
         // Handle bonus type - multiplier or fixed add
         $bonus_type = sanitize_text_field($_POST['bonus_type'] ?? 'multiplier');
         $bonus_multiplier = null;
-        $bonus_add = null;
+        $bonus_add_wet = null;
+        $bonus_add_dry = null;
 
         if ($bonus_type === 'add') {
-            $bonus_add = floatval($_POST['bonus_add'] ?? 0);
+            $bonus_add_wet = floatval($_POST['bonus_add_wet'] ?? 0);
+            $bonus_add_dry = floatval($_POST['bonus_add_dry'] ?? 0);
         } else {
             $bonus_multiplier = floatval($_POST['bonus_multiplier'] ?? 1);
         }
@@ -938,7 +940,8 @@ class Loyalty_Hub_Admin {
                 'wet_discount'           => floatval($_POST['wet_discount'] ?? 0),
                 'dry_discount'           => floatval($_POST['dry_discount'] ?? 0),
                 'bonus_multiplier'       => $bonus_multiplier,
-                'bonus_add'              => $bonus_add,
+                'bonus_add_wet'          => $bonus_add_wet,
+                'bonus_add_dry'          => $bonus_add_dry,
                 'min_spend'              => !empty($_POST['min_spend']) ? floatval($_POST['min_spend']) : null,
                 'valid_from'             => !empty($_POST['valid_from']) ? $_POST['valid_from'] : null,
                 'valid_until'            => !empty($_POST['valid_until']) ? $_POST['valid_until'] : null,
@@ -950,7 +953,7 @@ class Loyalty_Hub_Admin {
                 'requires_membership'    => isset($_POST['requires_membership']) ? 1 : 0,
                 'is_active'              => 1,
             ),
-            array('%s', '%s', '%s', '%s', '%d', '%f', '%f', '%f', '%f', '%f', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d')
+            array('%s', '%s', '%s', '%s', '%d', '%f', '%f', '%f', '%f', '%f', '%f', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d')
         );
 
         wp_redirect(admin_url('admin.php?page=loyalty-hub-promos&added=1'));
@@ -968,10 +971,12 @@ class Loyalty_Hub_Admin {
         // Handle bonus type - multiplier or fixed add
         $bonus_type = sanitize_text_field($_POST['bonus_type'] ?? 'multiplier');
         $bonus_multiplier = null;
-        $bonus_add = null;
+        $bonus_add_wet = null;
+        $bonus_add_dry = null;
 
         if ($bonus_type === 'add') {
-            $bonus_add = floatval($_POST['bonus_add'] ?? 0);
+            $bonus_add_wet = floatval($_POST['bonus_add_wet'] ?? 0);
+            $bonus_add_dry = floatval($_POST['bonus_add_dry'] ?? 0);
         } else {
             $bonus_multiplier = floatval($_POST['bonus_multiplier'] ?? 1);
         }
@@ -987,7 +992,8 @@ class Loyalty_Hub_Admin {
                 'wet_discount'           => floatval($_POST['wet_discount'] ?? 0),
                 'dry_discount'           => floatval($_POST['dry_discount'] ?? 0),
                 'bonus_multiplier'       => $bonus_multiplier,
-                'bonus_add'              => $bonus_add,
+                'bonus_add_wet'          => $bonus_add_wet,
+                'bonus_add_dry'          => $bonus_add_dry,
                 'min_spend'              => !empty($_POST['min_spend']) ? floatval($_POST['min_spend']) : null,
                 'valid_from'             => !empty($_POST['valid_from']) ? $_POST['valid_from'] : null,
                 'valid_until'            => !empty($_POST['valid_until']) ? $_POST['valid_until'] : null,
@@ -1000,7 +1006,7 @@ class Loyalty_Hub_Admin {
                 'is_active'              => isset($_POST['is_active']) ? 1 : 0,
             ),
             array('id' => $id),
-            array('%s', '%s', '%s', '%s', '%d', '%f', '%f', '%f', '%f', '%f', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d'),
+            array('%s', '%s', '%s', '%s', '%d', '%f', '%f', '%f', '%f', '%f', '%f', '%s', '%s', '%s', '%s', '%s', '%d', '%d', '%d', '%d'),
             array('%d')
         );
 

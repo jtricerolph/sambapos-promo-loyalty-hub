@@ -366,8 +366,9 @@ class Loyalty_Hub_Database {
          * Two types:
          * 1. loyalty_bonus: Increases tier discount % (uses #2303/#3303)
          *    - bonus_multiplier: e.g., 2.0 for "double discount" (10% -> 20%)
-         *    - bonus_add: Fixed % to add (e.g., 5.0 for +5%, so 10% -> 15%)
-         *    - Only one should be set per promo
+         *    - bonus_add_wet/bonus_add_dry: Fixed % to add per category
+         *      E.g., +5% wet / +10% dry means 10% tier becomes 15%/20%
+         *    - Use either multiplier OR add fields, not both
          *    - Requires membership (requires_membership = 1)
          *
          * 2. promo_code: One-off discount (uses #2305/#3305)
@@ -394,7 +395,8 @@ class Loyalty_Hub_Database {
             wet_discount decimal(5,2) DEFAULT NULL,
             dry_discount decimal(5,2) DEFAULT NULL,
             bonus_multiplier decimal(3,2) DEFAULT NULL,
-            bonus_add decimal(5,2) DEFAULT NULL,
+            bonus_add_wet decimal(5,2) DEFAULT NULL,
+            bonus_add_dry decimal(5,2) DEFAULT NULL,
             min_spend decimal(10,2) DEFAULT NULL,
             valid_from datetime,
             valid_until datetime,
