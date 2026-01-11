@@ -213,6 +213,100 @@ function validatePromoCode(promoCode) {
     }
 }
 
+/**
+ * Prompt staff to enter a promo code
+ *
+ * Trigger: Automation command button on POS screen
+ *
+ * Shows a numberpad/keyboard dialog for staff to enter a promo code,
+ * then validates and applies it to the current ticket.
+ *
+ * Works for:
+ * - Promo codes (promo_code type) - Anyone can use, REPLACES any existing discount
+ * - Does NOT work for Customer Promos (loyalty_bonus) - those are auto-applied
+ */
+function enterPromoCode() {
+    try {
+        // Prompt for promo code using SambaPOS numberpad
+        var promoCode = dlg.AskQuestion('Enter Promo Code:', '', 'Keyboard');
+
+        if (!promoCode || promoCode === '') {
+            return; // User cancelled
+        }
+
+        // Trim and uppercase
+        promoCode = promoCode.toString().trim().toUpperCase();
+
+        if (promoCode === '') {
+            dlg.ShowMessage('No promo code entered');
+            return;
+        }
+
+        // Validate first
+        if (!validatePromoCode(promoCode)) {
+            return; // Error already shown by validatePromoCode
+        }
+
+        // Apply the promo
+        applyPromoCode(promoCode);
+
+    } catch (ex) {
+        dlg.ShowMessage('Error: ' + ex.message);
+    }
+}
+
+/**
+ * Clear promo code from ticket (revert to tier discount)
+ *
+ * Trigger: Automation command button
+ *
+ * Removes any applied promo code and reverts to the customer's
+ * base tier discount (or auto-applied customer promo if one exists).
+ */
+function clearPromoCode() {
+    try {
+        var customerId = api.GetTicketState('CustomerID');
+
+        if (!customerId) {
+            // No customer - just clear everything
+            api.UpdateTicketState('DiscountType', '');
+            api.UpdateTicketState('WetDiscount', '0');
+            api.UpdateTicketState('DryDiscount', '0');
+            api.UpdateTicketState('PromoCode', '');
+            dlg.ShowMessage('Promo cleared. No discount applied.');
+            return;
+        }
+
+        // Re-identify customer to get their base rates (with auto-applied customer promo)
+        var url = API_BASE_URL + '/identify';
+        var payload = JSON.stringify({
+            identifier: customerId // Can use customer ID as identifier
+        });
+
+        var response = api.HttpPost(url, payload, 'application/json', 'X-API-Key:' + API_KEY);
+        var data = JSON.parse(response);
+
+        if (data.error) {
+            // Fallback - just clear the promo
+            api.UpdateTicketState('PromoCode', '');
+            dlg.ShowMessage('Promo cleared');
+            return;
+        }
+
+        // Restore tier discount (includes auto-applied customer promo if any)
+        api.UpdateTicketState('DiscountType', data.discount_type);
+        api.UpdateTicketState('WetDiscount', data.wet_discount.toString());
+        api.UpdateTicketState('DryDiscount', data.dry_discount.toString());
+        api.UpdateTicketState('PromoCode', '');
+
+        dlg.ShowMessage('Promo cleared.\nReverted to ' + data.tier + ' discount: ' +
+            data.wet_discount + '% drinks / ' + data.dry_discount + '% food');
+
+    } catch (ex) {
+        dlg.ShowMessage('Error clearing promo: ' + ex.message);
+    }
+}
+
 // =============================================================================
 // TRANSACTION LOGGING (Triggered on ticket close)
 // =============================================================================
