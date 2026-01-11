@@ -257,13 +257,13 @@ if (!defined('ABSPATH')) {
                         <label>
                             From:
                             <input type="datetime-local" name="valid_from"
-                                   value="<?php echo esc_attr($editing->valid_from ? date('Y-m-d\TH:i', strtotime($editing->valid_from)) : ''); ?>">
+                                   value="<?php echo esc_attr(!empty($editing->valid_from) ? date('Y-m-d\TH:i', strtotime($editing->valid_from)) : ''); ?>">
                         </label>
                         &nbsp;&nbsp;
                         <label>
                             Until:
                             <input type="datetime-local" name="valid_until"
-                                   value="<?php echo esc_attr($editing->valid_until ? date('Y-m-d\TH:i', strtotime($editing->valid_until)) : ''); ?>">
+                                   value="<?php echo esc_attr(!empty($editing->valid_until) ? date('Y-m-d\TH:i', strtotime($editing->valid_until)) : ''); ?>">
                         </label>
                     </td>
                 </tr>
@@ -288,7 +288,7 @@ if (!defined('ABSPATH')) {
                     <th scope="row">Valid Days</th>
                     <td>
                         <?php
-                        $valid_days = $editing->valid_days ? explode(',', $editing->valid_days) : array();
+                        $valid_days = !empty($editing->valid_days) ? explode(',', $editing->valid_days) : array();
                         $days = array('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun');
                         foreach ($days as $day) : ?>
                             <label style="margin-right: 10px;">
