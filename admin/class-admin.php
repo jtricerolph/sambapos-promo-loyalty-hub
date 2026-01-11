@@ -341,6 +341,7 @@ class Loyalty_Hub_Admin {
                 $customer->id
             ));
         }
+        unset($customer); // Break reference to prevent loop issues in view
 
         $total_pages = ceil($total / $per_page);
 
