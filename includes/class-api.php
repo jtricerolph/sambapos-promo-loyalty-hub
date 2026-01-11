@@ -540,7 +540,30 @@ class Loyalty_Hub_API {
             return $tier_result;
         }
 
-        // Get available promos for this customer (not for staff)
+        // Start with tier discount values
+        $wet_discount = $tier_result['wet_discount'];
+        $dry_discount = $tier_result['dry_discount'];
+        $applied_customer_promo = null;
+
+        // Auto-apply best customer promo (loyalty_bonus) for non-staff
+        if (!$tier_result['is_staff']) {
+            $best_promo = Loyalty_Hub_Promo_Handler::get_best_customer_promo(
+                $customer->id,
+                $hotel_id,
+                $tier_result['wet_discount'],
+                $tier_result['dry_discount']
+            );
+
+            if ($best_promo) {
+                // Use the boosted discount rates
+                $wet_discount = $best_promo['wet_discount'];
+                $dry_discount = $best_promo['dry_discount'];
+                $applied_customer_promo = $best_promo['promo'];
+            }
+        }
+
+        // Get available promo codes for this customer (not for staff)
+        // Note: Customer promos (loyalty_bonus) are auto-applied above, not listed here
         $available_promos = array();
         if (!$tier_result['is_staff']) {
             $available_promos = Loyalty_Hub_Promo_Handler::get_available_promos(
@@ -560,19 +583,22 @@ class Loyalty_Hub_API {
 
         // Build response
         $response = array(
-            'customer_id'      => $customer->id,
-            'name'             => $customer->name,
-            'email'            => $customer->email,
-            'tier'             => $tier_result['tier'],
-            'is_staff'         => $tier_result['is_staff'],
-            'wet_discount'     => $tier_result['wet_discount'],
-            'dry_discount'     => $tier_result['dry_discount'],
-            'discount_type'    => $tier_result['discount_type'],
-            'total_visits'     => $tier_result['total_visits'],
-            'period_days'      => $tier_result['period_days'],
-            'home_hotel'       => $tier_result['home_hotel'],
-            'available_promos' => $available_promos,
-            'next_tier'        => $next_tier_info,
+            'customer_id'             => $customer->id,
+            'name'                    => $customer->name,
+            'email'                   => $customer->email,
+            'tier'                    => $tier_result['tier'],
+            'is_staff'                => $tier_result['is_staff'],
+            'wet_discount'            => $wet_discount,
+            'dry_discount'            => $dry_discount,
+            'base_wet_discount'       => $tier_result['wet_discount'],
+            'base_dry_discount'       => $tier_result['dry_discount'],
+            'discount_type'           => $tier_result['discount_type'],
+            'applied_customer_promo'  => $applied_customer_promo,
+            'total_visits'            => $tier_result['total_visits'],
+            'period_days'             => $tier_result['period_days'],
+            'home_hotel'              => $tier_result['home_hotel'],
+            'available_promos'        => $available_promos,
+            'next_tier'               => $next_tier_info,
         );
 
         // Add identifier info

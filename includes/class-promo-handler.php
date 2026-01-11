@@ -85,7 +85,8 @@ class Loyalty_Hub_Promo_Handler {
     /**
      * Get available promos for a customer at a specific hotel
      *
-     * Returns promos that the customer can currently use.
+     * Returns PROMO CODE type promos that the customer can currently use.
+     * Customer promos (loyalty_bonus) are auto-applied and not returned here.
      * Checks all restrictions (date, time, day, usage limits, etc.)
      *
      * @since 1.0.0
@@ -93,7 +94,7 @@ class Loyalty_Hub_Promo_Handler {
      * @param int $customer_id The customer ID (can be null for guest)
      * @param int $hotel_id    The hotel where promo would be used
      *
-     * @return array Array of available promo objects
+     * @return array Array of available promo objects (promo_code type only)
      */
     public static function get_available_promos($customer_id, $hotel_id) {
         global $wpdb;
@@ -104,12 +105,14 @@ class Loyalty_Hub_Promo_Handler {
         $current_day = current_time('D'); // Mon, Tue, etc.
 
         // ----------------------------------------------------------------
-        // Get general promos valid at this hotel
+        // Get general promo_code promos valid at this hotel
+        // (loyalty_bonus promos are auto-applied, not shown here)
         // ----------------------------------------------------------------
         $general_promos = $wpdb->get_results($wpdb->prepare(
             "SELECT p.*
              FROM {$wpdb->prefix}loyalty_promos p
              WHERE p.is_active = 1
+               AND p.type = 'promo_code'
                AND (p.hotel_id IS NULL OR p.hotel_id = %d)
                AND (p.valid_from IS NULL OR p.valid_from <= %s)
                AND (p.valid_until IS NULL OR p.valid_until >= %s)
@@ -140,7 +143,8 @@ class Loyalty_Hub_Promo_Handler {
         }
 
         // ----------------------------------------------------------------
-        // Get targeted promos assigned to this customer
+        // Get targeted promo_code promos assigned to this customer
+        // (loyalty_bonus promos are auto-applied, not shown here)
         // ----------------------------------------------------------------
         if ($customer_id) {
             $targeted_promos = $wpdb->get_results($wpdb->prepare(
@@ -149,6 +153,7 @@ class Loyalty_Hub_Promo_Handler {
                  JOIN {$wpdb->prefix}loyalty_promos p ON cp.promo_id = p.id
                  WHERE cp.customer_id = %d
                    AND p.is_active = 1
+                   AND p.type = 'promo_code'
                    AND (p.hotel_id IS NULL OR p.hotel_id = %d)
                    AND (cp.expires_at IS NULL OR cp.expires_at >= %s)",
                 $customer_id,
@@ -343,7 +348,7 @@ class Loyalty_Hub_Promo_Handler {
         // Handle LOYALTY BONUS type
         // ----------------------------------------------------------------
         if ($promo->type === 'loyalty_bonus') {
-            // Must have base discount to multiply
+            // Must have base discount to boost
             if ($base_wet == 0 && $base_dry == 0) {
                 return new WP_Error(
                     'no_base_discount',
@@ -352,15 +357,14 @@ class Loyalty_Hub_Promo_Handler {
                 );
             }
 
-            $multiplier = floatval($promo->bonus_multiplier) ?: 1;
-            $wet_discount = min($base_wet * $multiplier, 100);
-            $dry_discount = min($base_dry * $multiplier, 100);
+            // Calculate boosted discount rates
+            $calculated = self::calculate_loyalty_bonus($promo, $base_wet, $base_dry);
 
             return array(
                 'success'       => true,
                 'discount_type' => 'discount',  // Still uses #2303/#3303
-                'wet_discount'  => $wet_discount,
-                'dry_discount'  => $dry_discount,
+                'wet_discount'  => $calculated['wet_discount'],
+                'dry_discount'  => $calculated['dry_discount'],
                 'promo_code'    => $promo->code,
                 'promo_name'    => $promo->name,
                 'type'          => 'loyalty_bonus',
@@ -518,16 +522,157 @@ class Loyalty_Hub_Promo_Handler {
      */
     private static function format_promo($promo) {
         return array(
-            'id'          => $promo->id,
-            'code'        => $promo->code,
-            'name'        => $promo->name,
-            'description' => $promo->description,
-            'type'        => $promo->type,
-            'wet_discount'  => floatval($promo->wet_discount),
-            'dry_discount'  => floatval($promo->dry_discount),
+            'id'               => $promo->id,
+            'code'             => $promo->code,
+            'name'             => $promo->name,
+            'description'      => $promo->description,
+            'type'             => $promo->type,
+            'wet_discount'     => floatval($promo->wet_discount),
+            'dry_discount'     => floatval($promo->dry_discount),
             'bonus_multiplier' => floatval($promo->bonus_multiplier),
-            'min_spend'   => floatval($promo->min_spend),
-            'valid_until' => $promo->valid_until,
+            'bonus_add_wet'    => floatval($promo->bonus_add_wet ?? 0),
+            'bonus_add_dry'    => floatval($promo->bonus_add_dry ?? 0),
+            'min_spend'        => floatval($promo->min_spend),
+            'valid_until'      => $promo->valid_until,
+        );
+    }
+
+    /**
+     * Get the best applicable customer promo (loyalty_bonus) for a customer
+     *
+     * Finds all valid loyalty_bonus promos for the customer and determines
+     * which one provides the best discount when applied to their tier rates.
+     *
+     * @since 1.0.0
+     *
+     * @param int   $customer_id Customer ID
+     * @param int   $hotel_id    Hotel ID
+     * @param float $base_wet    Base wet discount (tier rate)
+     * @param float $base_dry    Base dry discount (tier rate)
+     *
+     * @return array|null Best promo with calculated discounts, or null if none
+     */
+    public static function get_best_customer_promo($customer_id, $hotel_id, $base_wet, $base_dry) {
+        global $wpdb;
+
+        if (!$customer_id || ($base_wet == 0 && $base_dry == 0)) {
+            return null;
+        }
+
+        $now = current_time('mysql');
+        $current_time = current_time('H:i:s');
+        $current_day = current_time('D');
+
+        // Get all active loyalty_bonus promos valid at this hotel
+        $promos = $wpdb->get_results($wpdb->prepare(
+            "SELECT p.*
+             FROM {$wpdb->prefix}loyalty_promos p
+             WHERE p.is_active = 1
+               AND p.type = 'loyalty_bonus'
+               AND (p.hotel_id IS NULL OR p.hotel_id = %d)
+               AND (p.valid_from IS NULL OR p.valid_from <= %s)
+               AND (p.valid_until IS NULL OR p.valid_until >= %s)
+               AND p.requires_membership = 1",
+            $hotel_id,
+            $now,
+            $now
+        ));
+
+        // Also get targeted loyalty_bonus promos for this customer
+        $targeted_promos = $wpdb->get_results($wpdb->prepare(
+            "SELECT p.*, cp.expires_at as assigned_expires_at
+             FROM {$wpdb->prefix}loyalty_customer_promos cp
+             JOIN {$wpdb->prefix}loyalty_promos p ON cp.promo_id = p.id
+             WHERE cp.customer_id = %d
+               AND p.is_active = 1
+               AND p.type = 'loyalty_bonus'
+               AND (p.hotel_id IS NULL OR p.hotel_id = %d)
+               AND (cp.expires_at IS NULL OR cp.expires_at >= %s)",
+            $customer_id,
+            $hotel_id,
+            $now
+        ));
+
+        // Merge and dedupe (targeted promos may overlap with general promos)
+        $all_promos = array();
+        $seen_ids = array();
+        foreach (array_merge($promos, $targeted_promos) as $promo) {
+            if (!in_array($promo->id, $seen_ids)) {
+                $all_promos[] = $promo;
+                $seen_ids[] = $promo->id;
+            }
+        }
+
+        $best_promo = null;
+        $best_total = 0;
+
+        foreach ($all_promos as $promo) {
+            // Check time restriction
+            if (!self::check_time_restriction($promo, $current_time)) {
+                continue;
+            }
+
+            // Check day restriction
+            if (!self::check_day_restriction($promo, $current_day)) {
+                continue;
+            }
+
+            // Check usage limits
+            if (!self::check_usage_limits($promo, $customer_id)) {
+                continue;
+            }
+
+            // Calculate resulting discounts
+            $calculated = self::calculate_loyalty_bonus($promo, $base_wet, $base_dry);
+            $total_discount = $calculated['wet_discount'] + $calculated['dry_discount'];
+
+            // Keep track of best (highest combined discount)
+            if ($total_discount > $best_total) {
+                $best_total = $total_discount;
+                $best_promo = array(
+                    'promo'        => self::format_promo($promo),
+                    'wet_discount' => $calculated['wet_discount'],
+                    'dry_discount' => $calculated['dry_discount'],
+                );
+            }
+        }
+
+        return $best_promo;
+    }
+
+    /**
+     * Calculate loyalty bonus discount rates
+     *
+     * Applies either multiplier or add percentages to base tier rates.
+     *
+     * @param object $promo    Promo database row
+     * @param float  $base_wet Base wet discount
+     * @param float  $base_dry Base dry discount
+     *
+     * @return array Calculated wet_discount and dry_discount
+     */
+    private static function calculate_loyalty_bonus($promo, $base_wet, $base_dry) {
+        $wet_discount = $base_wet;
+        $dry_discount = $base_dry;
+
+        // Check if using add percentages (takes priority if set)
+        $add_wet = floatval($promo->bonus_add_wet ?? 0);
+        $add_dry = floatval($promo->bonus_add_dry ?? 0);
+
+        if ($add_wet > 0 || $add_dry > 0) {
+            // Add fixed percentage
+            $wet_discount = min($base_wet + $add_wet, 100);
+            $dry_discount = min($base_dry + $add_dry, 100);
+        } else {
+            // Use multiplier
+            $multiplier = floatval($promo->bonus_multiplier) ?: 1;
+            $wet_discount = min($base_wet * $multiplier, 100);
+            $dry_discount = min($base_dry * $multiplier, 100);
+        }
+
+        return array(
+            'wet_discount' => $wet_discount,
+            'dry_discount' => $dry_discount,
         );
     }
 }
