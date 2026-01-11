@@ -900,6 +900,22 @@ class Loyalty_Hub_Admin {
     private function handle_add_promo() {
         global $wpdb;
 
+        $promo_type = sanitize_text_field($_POST['promo_type']);
+
+        // For customer promos (loyalty_bonus), auto-generate code if not provided
+        $promo_code = sanitize_text_field($_POST['promo_code'] ?? '');
+        if (empty($promo_code) && $promo_type === 'loyalty_bonus') {
+            // Generate unique internal code like "CP_ABC123"
+            do {
+                $promo_code = 'CP_' . strtoupper(wp_generate_password(8, false, false));
+                $exists = $wpdb->get_var($wpdb->prepare(
+                    "SELECT id FROM {$wpdb->prefix}loyalty_promos WHERE code = %s",
+                    $promo_code
+                ));
+            } while ($exists);
+        }
+        $promo_code = strtoupper($promo_code);
+
         // Handle bonus type - multiplier or fixed add
         $bonus_type = sanitize_text_field($_POST['bonus_type'] ?? 'multiplier');
         $bonus_multiplier = null;
@@ -914,7 +930,7 @@ class Loyalty_Hub_Admin {
         $wpdb->insert(
             $wpdb->prefix . 'loyalty_promos',
             array(
-                'code'                   => strtoupper(sanitize_text_field($_POST['promo_code'])),
+                'code'                   => $promo_code,
                 'name'                   => sanitize_text_field($_POST['promo_name']),
                 'description'            => sanitize_textarea_field($_POST['promo_description'] ?? ''),
                 'type'                   => sanitize_text_field($_POST['promo_type']),
