@@ -301,11 +301,31 @@ class Loyalty_Hub_Admin {
         $page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
         $offset = ($page - 1) * $per_page;
 
-        // Search
+        // Search and filters
         $search = isset($_GET['s']) ? sanitize_text_field($_GET['s']) : '';
+        $filter_hotel = isset($_GET['hotel']) ? intval($_GET['hotel']) : '';
+        $filter_staff = isset($_GET['staff']) ? $_GET['staff'] : '';
+        $filter_active = isset($_GET['active']) ? $_GET['active'] : '1'; // Default to active only
 
         // Build query - search includes identifiers table
-        $where = "WHERE c.is_active = 1";
+        $where = "WHERE 1=1";
+
+        // Active filter (default: show only active)
+        if ($filter_active !== '') {
+            $where .= $wpdb->prepare(" AND c.is_active = %d", intval($filter_active));
+        }
+
+        // Hotel filter
+        if ($filter_hotel) {
+            $where .= $wpdb->prepare(" AND c.home_hotel_id = %d", $filter_hotel);
+        }
+
+        // Staff filter
+        if ($filter_staff !== '') {
+            $where .= $wpdb->prepare(" AND c.is_staff = %d", intval($filter_staff));
+        }
+
+        // Search
         if ($search) {
             $search_like = '%' . $wpdb->esc_like($search) . '%';
             $where .= $wpdb->prepare(

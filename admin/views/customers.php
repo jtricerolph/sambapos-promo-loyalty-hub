@@ -13,6 +13,9 @@
  * @var int    $total_pages          Total pages
  * @var int    $page                 Current page
  * @var string $search               Search term
+ * @var int    $filter_hotel         Filter by home hotel ID
+ * @var string $filter_staff         Filter by staff status (''|'0'|'1')
+ * @var string $filter_active        Filter by active status (''|'0'|'1')
  * @var object $editing              Customer being edited (if any)
  * @var array  $editing_rfid_fobs    RFID fobs for customer being edited
  *
@@ -88,21 +91,54 @@ if (!defined('ABSPATH')) {
         </div>
     <?php endif; ?>
 
-    <!-- Search Form -->
-    <form method="get" class="search-form">
+    <!-- Search and Filter Form -->
+    <form method="get" class="search-form" style="margin-bottom: 15px;">
         <input type="hidden" name="page" value="loyalty-hub-customers">
-        <p class="search-box">
-            <label class="screen-reader-text" for="customer-search">Search Customers:</label>
+
+        <div class="tablenav top" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <!-- Filters -->
+            <select name="hotel">
+                <option value="">All Hotels</option>
+                <?php foreach ($hotels as $hotel) : ?>
+                    <option value="<?php echo esc_attr($hotel->id); ?>"
+                        <?php selected($filter_hotel, $hotel->id); ?>>
+                        <?php echo esc_html($hotel->name); ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
+
+            <select name="staff">
+                <option value="" <?php selected($filter_staff, ''); ?>>All Members</option>
+                <option value="1" <?php selected($filter_staff, '1'); ?>>Staff Only</option>
+                <option value="0" <?php selected($filter_staff, '0'); ?>>Non-Staff Only</option>
+            </select>
+
+            <select name="active">
+                <option value="1" <?php selected($filter_active, '1'); ?>>Active Only</option>
+                <option value="0" <?php selected($filter_active, '0'); ?>>Inactive Only</option>
+                <option value="" <?php selected($filter_active, ''); ?>>All</option>
+            </select>
+
+            <!-- Search -->
             <input type="search" id="customer-search" name="s"
                    value="<?php echo esc_attr($search); ?>"
-                   placeholder="Search by name, email, or RFID...">
-            <input type="submit" class="button" value="Search">
-            <?php if ($search) : ?>
+                   placeholder="Search name, email, RFID..."
+                   style="width: 200px;">
+
+            <input type="submit" class="button" value="Filter">
+
+            <?php
+            $has_filters = $search || $filter_hotel || $filter_staff !== '' || $filter_active !== '1';
+            if ($has_filters) : ?>
                 <a href="<?php echo admin_url('admin.php?page=loyalty-hub-customers'); ?>" class="button">
                     Clear
                 </a>
             <?php endif; ?>
-        </p>
+
+            <span class="displaying-num" style="margin-left: auto;">
+                <?php echo number_format($total); ?> customers
+            </span>
+        </div>
     </form>
 
     <!-- Customers Table -->
@@ -182,9 +218,19 @@ if (!defined('ABSPATH')) {
                 <span class="displaying-num"><?php echo number_format($total); ?> items</span>
                 <span class="pagination-links">
                     <?php
+                    // Build base URL preserving all filters
                     $base_url = admin_url('admin.php?page=loyalty-hub-customers');
                     if ($search) {
                         $base_url .= '&s=' . urlencode($search);
+                    }
+                    if ($filter_hotel) {
+                        $base_url .= '&hotel=' . intval($filter_hotel);
+                    }
+                    if ($filter_staff !== '') {
+                        $base_url .= '&staff=' . urlencode($filter_staff);
+                    }
+                    if ($filter_active !== '1') {
+                        $base_url .= '&active=' . urlencode($filter_active);
                     }
 
                     if ($page > 1) : ?>
