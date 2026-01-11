@@ -1,0 +1,283 @@
+/**
+ * Loyalty Hub Admin Styles
+ *
+ * Styles for the WordPress admin interface.
+ *
+ * @package Loyalty_Hub
+ * @since 1.0.0
+ */
+
+/* ==========================================================================
+   General Layout
+   ========================================================================== */
+
+.loyalty-hub-admin {
+    max-width: 1400px;
+}
+
+.loyalty-hub-admin h1 {
+    margin-bottom: 20px;
+}
+
+/* ==========================================================================
+   Stats Cards (Dashboard)
+   ========================================================================== */
+
+.loyalty-hub-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.stat-card .stat-icon {
+    font-size: 40px;
+    width: 50px;
+    height: 50px;
+    color: #2271b1;
+    opacity: 0.8;
+}
+
+.stat-card .stat-value {
+    font-size: 32px;
+    font-weight: 600;
+    color: #1d2327;
+    line-height: 1;
+}
+
+.stat-card .stat-label {
+    color: #50575e;
+    font-size: 13px;
+    margin-top: 5px;
+}
+
+/* ==========================================================================
+   Quick Links
+   ========================================================================== */
+
+.loyalty-hub-quick-links {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.loyalty-hub-quick-links h2 {
+    margin-top: 0;
+}
+
+.quick-links-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.quick-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    background: #f0f0f1;
+    border-radius: 4px;
+    text-decoration: none;
+    color: #1d2327;
+    transition: background-color 0.2s;
+}
+
+.quick-link:hover {
+    background: #e0e0e1;
+    color: #1d2327;
+}
+
+.quick-link .dashicons {
+    font-size: 30px;
+    width: 30px;
+    height: 30px;
+    margin-bottom: 10px;
+    color: #2271b1;
+}
+
+/* ==========================================================================
+   Recent Transactions
+   ========================================================================== */
+
+.loyalty-hub-recent {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    padding: 20px;
+    margin-bottom: 30px;
+}
+
+.loyalty-hub-recent h2 {
+    margin-top: 0;
+}
+
+/* ==========================================================================
+   System Info
+   ========================================================================== */
+
+.loyalty-hub-info {
+    background: #f0f6fc;
+    border: 1px solid #c3c4c7;
+    border-left: 4px solid #2271b1;
+    padding: 15px 20px;
+}
+
+.loyalty-hub-info h2 {
+    margin-top: 0;
+}
+
+.loyalty-hub-info code {
+    background: #fff;
+    padding: 5px 10px;
+}
+
+/* ==========================================================================
+   Status Badges
+   ========================================================================== */
+
+.status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-badge.status-active {
+    background: #edfaef;
+    color: #007017;
+}
+
+.status-badge.status-inactive {
+    background: #fcecec;
+    color: #8a0f0f;
+}
+
+.status-badge.status-staff {
+    background: #fcf0e3;
+    color: #996800;
+}
+
+/* ==========================================================================
+   Tier Badges
+   ========================================================================== */
+
+.tier-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.tier-badge.tier-member {
+    background: #f0f0f1;
+    color: #50575e;
+}
+
+.tier-badge.tier-loyalty {
+    background: #e7f3ff;
+    color: #0066cc;
+}
+
+.tier-badge.tier-regular {
+    background: #f0f6e6;
+    color: #46760a;
+}
+
+.tier-badge.tier-staff {
+    background: #fcf0e3;
+    color: #996800;
+}
+
+.tier-badge.tier-guest {
+    background: #f0f0f1;
+    color: #999;
+}
+
+/* ==========================================================================
+   Form Sections
+   ========================================================================== */
+
+.loyalty-hub-form-section {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    padding: 20px;
+    margin-top: 30px;
+}
+
+.loyalty-hub-form-section h2 {
+    margin-top: 0;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #eee;
+}
+
+/* ==========================================================================
+   Tables
+   ========================================================================== */
+
+.loyalty-hub-admin .wp-list-table {
+    margin-top: 10px;
+}
+
+.loyalty-hub-admin .wp-list-table code {
+    background: #f0f0f1;
+    padding: 2px 6px;
+}
+
+/* API Key display */
+.api-key {
+    font-family: monospace;
+    background: #f6f7f7;
+    padding: 4px 8px;
+    border-radius: 3px;
+}
+
+/* ==========================================================================
+   Search Forms
+   ========================================================================== */
+
+.search-form {
+    margin-bottom: 15px;
+}
+
+.search-form .search-box {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* ==========================================================================
+   Pagination
+   ========================================================================== */
+
+.tablenav .pagination-links {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 782px) {
+    .loyalty-hub-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .quick-links-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+}
