@@ -299,6 +299,58 @@ Add an additional RFID fob to an existing customer. Useful for couples/families.
 
 ---
 
+## POST /identifier/replace
+
+Replace an existing RFID fob with a new code. Useful when a customer loses their fob.
+
+**Request:**
+```json
+{
+    "customer_id": 42,
+    "identifier_id": 15,
+    "new_identifier": "REPLACEMENT123"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| customer_id | int | Yes | Customer ID |
+| identifier_id | int | Yes | ID of the existing fob to replace |
+| new_identifier | string | Yes | The new RFID code |
+
+**Response (200):**
+```json
+{
+    "success": true,
+    "identifier_id": 15,
+    "customer_id": 42,
+    "old_value": "OLDLOSTFOB456",
+    "new_value": "REPLACEMENT123",
+    "label": "Primary RFID Fob",
+    "message": "RFID fob replaced successfully"
+}
+```
+
+**Error Response (404):**
+```json
+{
+    "code": "identifier_not_found",
+    "message": "RFID fob not found for this customer",
+    "data": { "status": 404 }
+}
+```
+
+**Error Response (409):**
+```json
+{
+    "code": "duplicate_rfid",
+    "message": "This RFID code is already registered to another customer",
+    "data": { "status": 409 }
+}
+```
+
+---
+
 ## POST /promos/validate
 
 Check if a promo code is valid without applying it.

@@ -310,6 +310,45 @@ class Loyalty_Hub_API {
 
         /*
          * =================================================================
+         * POST /identifier/replace
+         * =================================================================
+         * Replace an existing RFID fob with a new code.
+         * Useful when a customer loses their fob and needs a replacement.
+         *
+         * Request body:
+         *   customer_id: int (required)
+         *   identifier_id: int (required, the existing fob to replace)
+         *   new_identifier: string (required, the new RFID code)
+         *
+         * Response:
+         *   success: bool
+         *   identifier_id: int
+         *   old_value: string
+         *   new_value: string
+         */
+        register_rest_route(self::NAMESPACE, '/identifier/replace', array(
+            'methods'             => 'POST',
+            'callback'            => array(__CLASS__, 'replace_identifier'),
+            'permission_callback' => array(__CLASS__, 'authenticate_api_key'),
+            'args'                => array(
+                'customer_id' => array(
+                    'type'     => 'integer',
+                    'required' => true,
+                ),
+                'identifier_id' => array(
+                    'type'     => 'integer',
+                    'required' => true,
+                ),
+                'new_identifier' => array(
+                    'type'              => 'string',
+                    'required'          => true,
+                    'sanitize_callback' => 'sanitize_text_field',
+                ),
+            ),
+        ));
+
+        /*
+         * =================================================================
          * POST /promos/validate
          * =================================================================
          * Check if a promo code is valid.
@@ -1056,6 +1095,102 @@ class Loyalty_Hub_API {
             'label'         => $label,
             'message'       => 'RFID fob added successfully',
         ), 201);
+    }
+
+    /**
+     * POST /identifier/replace - Replace an RFID fob
+     *
+     * Replaces an existing RFID fob with a new code.
+     * Useful when a customer loses their fob and needs a replacement.
+     *
+     * @since 1.0.0
+     *
+     * @param WP_REST_Request $request The REST request
+     *
+     * @return WP_REST_Response|WP_Error Response with identifier data
+     */
+    public static function replace_identifier($request) {
+        global $wpdb;
+
+        $customer_id = $request->get_param('customer_id');
+        $identifier_id = $request->get_param('identifier_id');
+        $new_identifier = $request->get_param('new_identifier');
+
+        // Check customer exists
+        $customer = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}loyalty_customers WHERE id = %d AND is_active = 1",
+            $customer_id
+        ));
+
+        if (!$customer) {
+            return new WP_Error(
+                'customer_not_found',
+                'Customer not found',
+                array('status' => 404)
+            );
+        }
+
+        // Check identifier exists and belongs to customer
+        $existing_fob = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM {$wpdb->prefix}loyalty_customer_identifiers
+             WHERE id = %d AND customer_id = %d",
+            $identifier_id,
+            $customer_id
+        ));
+
+        if (!$existing_fob) {
+            return new WP_Error(
+                'identifier_not_found',
+                'RFID fob not found for this customer',
+                array('status' => 404)
+            );
+        }
+
+        // Check new RFID doesn't already exist (excluding current fob)
+        $duplicate = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM {$wpdb->prefix}loyalty_customer_identifiers
+             WHERE identifier_value = %s AND id != %d",
+            $new_identifier,
+            $identifier_id
+        ));
+
+        if ($duplicate) {
+            return new WP_Error(
+                'duplicate_rfid',
+                'This RFID code is already registered to another customer',
+                array('status' => 409)
+            );
+        }
+
+        $old_value = $existing_fob->identifier_value;
+
+        // Update the identifier
+        $wpdb->update(
+            $wpdb->prefix . 'loyalty_customer_identifiers',
+            array('identifier_value' => $new_identifier),
+            array('id' => $identifier_id),
+            array('%s'),
+            array('%d')
+        );
+
+        // Update customer's updated_at timestamp for sync purposes
+        $wpdb->update(
+            $wpdb->prefix . 'loyalty_customers',
+            array('updated_at' => current_time('mysql')),
+            array('id' => $customer_id),
+            array('%s'),
+            array('%d')
+        );
+
+        return new WP_REST_Response(array(
+            'success'       => true,
+            'identifier_id' => $identifier_id,
+            'customer_id'   => $customer_id,
+            'old_value'     => $old_value,
+            'new_value'     => $new_identifier,
+            'label'         => $existing_fob->label,
+            'message'       => 'RFID fob replaced successfully',
+        ), 200);
     }
 
     /**
