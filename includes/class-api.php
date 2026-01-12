@@ -158,7 +158,12 @@ class Loyalty_Hub_API {
                     'required' => false,
                     'default'  => 0,
                 ),
-                'discount_amount' => array(
+                'wet_discount_amount' => array(
+                    'type'     => 'number',
+                    'required' => false,
+                    'default'  => 0,
+                ),
+                'dry_discount_amount' => array(
                     'type'     => 'number',
                     'required' => false,
                     'default'  => 0,
@@ -685,22 +690,23 @@ class Loyalty_Hub_API {
 
         // Insert transaction
         $transaction_data = array(
-            'customer_id'     => $customer_id,
-            'hotel_id'        => $hotel_id,
-            'ticket_id'       => $request->get_param('ticket_id'),
-            'total_amount'    => floatval($request->get_param('total_amount')),
-            'wet_total'       => floatval($request->get_param('wet_total')),
-            'dry_total'       => floatval($request->get_param('dry_total')),
-            'discount_amount' => floatval($request->get_param('discount_amount')),
-            'discount_type'   => $request->get_param('discount_type'),
-            'tier_at_visit'   => $request->get_param('tier_at_visit'),
-            'promo_code'      => $request->get_param('promo_code'),
+            'customer_id'         => $customer_id,
+            'hotel_id'            => $hotel_id,
+            'ticket_id'           => $request->get_param('ticket_id'),
+            'total_amount'        => floatval($request->get_param('total_amount')),
+            'wet_total'           => floatval($request->get_param('wet_total')),
+            'dry_total'           => floatval($request->get_param('dry_total')),
+            'wet_discount_amount' => floatval($request->get_param('wet_discount_amount')),
+            'dry_discount_amount' => floatval($request->get_param('dry_discount_amount')),
+            'discount_type'       => $request->get_param('discount_type'),
+            'tier_at_visit'       => $request->get_param('tier_at_visit'),
+            'promo_code'          => $request->get_param('promo_code'),
         );
 
         $wpdb->insert(
             $wpdb->prefix . 'loyalty_transactions',
             $transaction_data,
-            array('%d', '%d', '%s', '%f', '%f', '%f', '%f', '%s', '%s', '%s')
+            array('%d', '%d', '%s', '%f', '%f', '%f', '%f', '%f', '%s', '%s', '%s')
         );
 
         $transaction_id = $wpdb->insert_id;
@@ -717,6 +723,12 @@ class Loyalty_Hub_API {
         $items = $request->get_param('items');
         if (!empty($items) && is_array($items)) {
             foreach ($items as $item) {
+                // Normalize stock_type to 'wet' or 'dry'
+                $stock_type = sanitize_text_field($item['stock_type'] ?? 'dry');
+                if (!in_array($stock_type, array('wet', 'dry'))) {
+                    $stock_type = 'dry';
+                }
+
                 $wpdb->insert(
                     $wpdb->prefix . 'loyalty_transaction_items',
                     array(
@@ -725,9 +737,9 @@ class Loyalty_Hub_API {
                         'product_group'  => sanitize_text_field($item['product_group'] ?? ''),
                         'quantity'       => floatval($item['quantity'] ?? 1),
                         'price'          => floatval($item['price'] ?? 0),
-                        'is_wet'         => intval($item['is_wet'] ?? 0),
+                        'stock_type'     => $stock_type,
                     ),
-                    array('%d', '%s', '%s', '%f', '%f', '%d')
+                    array('%d', '%s', '%s', '%f', '%f', '%s')
                 );
 
                 // Update customer preferences
@@ -744,11 +756,13 @@ class Loyalty_Hub_API {
         // Track promo usage if a promo was used
         $promo_code = $request->get_param('promo_code');
         if (!empty($promo_code)) {
+            $total_discount = floatval($request->get_param('wet_discount_amount'))
+                            + floatval($request->get_param('dry_discount_amount'));
             Loyalty_Hub_Promo_Handler::record_usage(
                 $promo_code,
                 $customer_id,
                 $transaction_id,
-                floatval($request->get_param('discount_amount'))
+                $total_discount
             );
         }
 

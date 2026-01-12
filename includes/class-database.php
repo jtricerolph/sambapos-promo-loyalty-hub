@@ -287,7 +287,8 @@ class Loyalty_Hub_Database {
             total_amount decimal(10,2) NOT NULL DEFAULT 0.00,
             wet_total decimal(10,2) NOT NULL DEFAULT 0.00,
             dry_total decimal(10,2) NOT NULL DEFAULT 0.00,
-            discount_amount decimal(10,2) NOT NULL DEFAULT 0.00,
+            wet_discount_amount decimal(10,2) NOT NULL DEFAULT 0.00,
+            dry_discount_amount decimal(10,2) NOT NULL DEFAULT 0.00,
             discount_type varchar(20),
             tier_at_visit varchar(50),
             promo_code varchar(50),
@@ -310,7 +311,7 @@ class Loyalty_Hub_Database {
          * - Enable personalized notifications
          *   e.g., "We miss you! How about a pint of [favorite drink]?"
          *
-         * is_wet flag distinguishes drinks from food for preference
+         * stock_type distinguishes drinks from food for preference
          * grouping and notification personalization.
          */
         $table_items = $wpdb->prefix . 'loyalty_transaction_items';
@@ -321,7 +322,7 @@ class Loyalty_Hub_Database {
             product_group varchar(100),
             quantity decimal(10,2) NOT NULL DEFAULT 1,
             price decimal(10,2) NOT NULL DEFAULT 0.00,
-            is_wet tinyint(1) DEFAULT 0,
+            stock_type varchar(10) DEFAULT 'dry',
             PRIMARY KEY (id),
             KEY transaction_id (transaction_id)
         ) $charset_collate;";

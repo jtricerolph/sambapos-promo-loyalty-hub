@@ -117,7 +117,8 @@ Log a completed sale for tier tracking and reporting.
     "total_amount": 45.50,
     "wet_total": 18.00,
     "dry_total": 27.50,
-    "discount_amount": 6.80,
+    "wet_discount_amount": 2.70,
+    "dry_discount_amount": 5.50,
     "discount_type": "discount",
     "tier_at_visit": "Loyalty",
     "promo_code": null,
@@ -127,14 +128,14 @@ Log a completed sale for tier tracking and reporting.
             "product_group": "Drinks",
             "quantity": 2,
             "price": 5.50,
-            "is_wet": 1
+            "stock_type": "wet"
         },
         {
             "product_name": "Fish & Chips",
             "product_group": "Mains",
             "quantity": 1,
             "price": 14.95,
-            "is_wet": 0
+            "stock_type": "dry"
         }
     ]
 }
@@ -147,11 +148,22 @@ Log a completed sale for tier tracking and reporting.
 | total_amount | float | Yes | Final ticket total |
 | wet_total | float | No | Drinks total before discount |
 | dry_total | float | No | Food total before discount |
-| discount_amount | float | No | Total discount applied |
+| wet_discount_amount | float | No | Drinks discount amount applied |
+| dry_discount_amount | float | No | Food discount amount applied |
 | discount_type | string | No | `"discount"`, `"promo"`, or `"staff"` |
 | tier_at_visit | string | No | Tier used for this transaction |
 | promo_code | string | No | Promo code if one was used |
 | items | array | No | Line items for preference tracking |
+
+**Items array fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| product_name | string | Product name |
+| product_group | string | Product group/category |
+| quantity | float | Quantity purchased |
+| price | float | Unit price |
+| stock_type | string | `"wet"` (drinks) or `"dry"` (food) |
 
 **Response (201):**
 ```json

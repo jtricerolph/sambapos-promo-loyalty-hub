@@ -334,10 +334,11 @@ function logTransaction() {
         var tier = api.GetTicketState('CustomerTier') || 'Member';
         var promoCode = api.GetTicketState('PromoCode') || null;
 
-        // Calculate wet/dry totals and discount
+        // Calculate wet/dry totals and discounts
         var wetTotal = calculateWetTotal();
         var dryTotal = calculateDryTotal();
-        var discountAmount = calculateDiscountAmount();
+        var wetDiscountAmount = calculateWetDiscountAmount();
+        var dryDiscountAmount = calculateDryDiscountAmount();
 
         // Get line items for product tracking
         var items = getTicketItems();
@@ -350,7 +351,8 @@ function logTransaction() {
             total_amount: totalAmount,
             wet_total: wetTotal,
             dry_total: dryTotal,
-            discount_amount: discountAmount,
+            wet_discount_amount: wetDiscountAmount,
+            dry_discount_amount: dryDiscountAmount,
             discount_type: discountType,
             tier_at_visit: tier,
             promo_code: promoCode,
@@ -403,22 +405,38 @@ function calculateDryTotal() {
 }
 
 /**
- * Calculate total discount amount applied
+ * Calculate wet (drinks) discount amount applied
  *
- * @returns {number} Total discount amount
+ * @returns {number} Wet discount amount
  */
-function calculateDiscountAmount() {
-    // Get discount from calculations
+function calculateWetDiscountAmount() {
+    // Get discount from wet calculations (account codes #2303, #2305, #2306)
     var calculations = api.GetCalculations();
     var discount = 0;
     for (var i = 0; i < calculations.length; i++) {
         var calc = calculations[i];
-        // Check for loyalty/promo/staff calculation types
         if (calc.Name.indexOf('#2303') > -1 ||
-            calc.Name.indexOf('#3303') > -1 ||
             calc.Name.indexOf('#2305') > -1 ||
+            calc.Name.indexOf('#2306') > -1) {
+            discount += Math.abs(calc.Amount);
+        }
+    }
+    return discount;
+}
+
+/**
+ * Calculate dry (food) discount amount applied
+ *
+ * @returns {number} Dry discount amount
+ */
+function calculateDryDiscountAmount() {
+    // Get discount from dry calculations (account codes #3303, #3305, #3306)
+    var calculations = api.GetCalculations();
+    var discount = 0;
+    for (var i = 0; i < calculations.length; i++) {
+        var calc = calculations[i];
+        if (calc.Name.indexOf('#3303') > -1 ||
             calc.Name.indexOf('#3305') > -1 ||
-            calc.Name.indexOf('#2306') > -1 ||
             calc.Name.indexOf('#3306') > -1) {
             discount += Math.abs(calc.Amount);
         }
@@ -429,6 +447,9 @@ function calculateDiscountAmount() {
 /**
  * Get ticket line items for product tracking
  *
+ * Uses product's Stock Type tag to determine wet/dry classification.
+ * Matches SambaPOS product configuration.
+ *
  * @returns {array} Array of item objects
  */
 function getTicketItems() {
@@ -438,13 +459,19 @@ function getTicketItems() {
     for (var i = 0; i < orders.length; i++) {
         var order = orders[i];
         var category = api.GetProductTag(order.ProductId, 'Category') || 'Other';
+        // Use Stock Type tag from product - defaults to 'dry' if not set
+        var stockType = api.GetProductTag(order.ProductId, 'Stock Type') || 'dry';
+        stockType = stockType.toLowerCase();
+        if (stockType !== 'wet' && stockType !== 'dry') {
+            stockType = 'dry';
+        }
 
         items.push({
             product_name: order.ProductName,
             product_group: category,
             quantity: order.Quantity,
             price: order.Price,
-            is_wet: category === 'Drinks' ? 1 : 0
+            stock_type: stockType
         });
     }
 
